@@ -523,7 +523,8 @@ class HermesManager:
         exe = shutil.which("ollama", path=os.pathsep.join([os.environ.get("PATH", "")] + [
             "/usr/local/bin", "/opt/homebrew/bin", str(Path.home() / ".local" / "bin")] +
             ([os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Ollama")] if IS_WIN else [])))
-        return {"running": code == 200, "installed": bool(exe) or code == 200, "models": models}
+        return {"running": code == 200, "installed": bool(exe) or code == 200, "models": models,
+                "weak": [m for m in models if weak_model(m)], "recommended": RECOMMENDED_MODELS}
 
     # ---- status ----------------------------------------------------------
     def status(self, fresh=False):
@@ -884,6 +885,8 @@ class HermesManager:
             self._probe.update(ok=False, t=time.time())
             raise SetupError(res["error"], res.get("kind", "test"))
         lab, mdl = self.provider_label()
+        if p["kind"] == "local" and weak_model(mdl or use_model) and not job.result.get("warning"):
+            job.result["warning"] = model_advice(mdl or use_model)
         job.result["connected"] = lab or p["label"]
         job.result["model"] = mdl
         job.step("test", "ok")
@@ -949,7 +952,7 @@ class HermesManager:
         return self._start("pull", [("pull", "Downloading " + model)], lambda j: (j.step("pull", "run"), self._ollama_pull(j, model), j.step("pull", "ok")))
 
     # ---- 4. test message ---------------------------------------------------
-    def test_chat(self, text="Reply with the single word: ready"):
+    def test_chat(self, text="What is two plus two? Answer in one short sentence."):
         key = self.resolve_api_key()
         if not key:
             return {"ok": False, "kind": "no_key", "error": "ATLAS has no key for Hermes yet."}
@@ -958,10 +961,53 @@ class HermesManager:
         code, out = self._http("POST", self.api_url() + "/v1/chat/completions",
                                {"Authorization": "Bearer " + key, "Content-Type": "application/json", "X-Hermes-Session-Id": "atlas-setup-test"},
                                body, timeout=150)
-        return interpret_chat(code, out, key)
+        res = interpret_chat(code, out, key)
+        lab, mdl = self.provider_label()
+        res["model"] = mdl
+        if res.get("ok") and weak_model(mdl):
+            res["warning"] = model_advice(mdl)
+        elif res.get("kind") == "tool_echo" and mdl:
+            res["error"] = TOOL_ECHO_MESSAGE.replace("the local model", mdl)
+        return res
 
 
-def interpret_chat(code, out, key=""):
+# ---- local-model guard rails -------------------------------------------------------------------------------------------------
+# Hermes Agent sends the model a long system prompt plus a big tool schema. Small local models (hermes3, llama3.2, 1-3B models ...) cannot
+# follow it: they answer with *descriptions or examples of tool calls* ("Here is an example of a function call in the format you requested:
+# Tool: ...") instead of a reply. These helpers recognise such models and such replies so ATLAS can retry, explain, and recommend a better one.
+RECOMMENDED_MODELS = ["qwen2.5:7b", "qwen3:8b", "llama3.1:8b"]
+WEAK_MODEL_RE = re.compile(r"(?i)(hermes[-_]?3|llama[-_]?3\.2|tinyllama|smollm|\bphi[-_]?\d|\bphi\b|gemma[-_]?2?[:\-_]?(1|2)b|[:\-_](0\.5|1|1\.5|2|3)b(\b|[-_]))")
+_TOOL_ECHO = [re.compile(x) for x in (
+    r"(?i)</?tool_call>", r"(?i)<function=", r"\[TOOL_CALLS\]", r"(?i)<\|python_tag\|>", r"(?i)<\|?tool_calls?\|?>",
+    r"(?is)\{\s*\"(name|function)\"\s*:\s*\"[^\"]+\"\s*,\s*\"(arguments|parameters)\"\s*:",
+    r"(?is)\"tool_calls\"\s*:\s*\[",
+    r"(?i)function call in the format you requested",
+    r"(?i)example of a function call[\s\S]{0,200}\btool\s*:",
+    r"(?im)^\s*tool\s*:\s*\S[\s\S]{0,300}\b(arguments|parameters)\b",
+)]
+TOOL_ECHO_MESSAGE = ("The AI answered with tool-call text instead of a real reply. This usually means the local model is too small for Hermes' "
+                     "tools (hermes3, llama3.2 and other small models do this). Pick a stronger one such as Qwen 2.5 7B, Qwen 3 8B or Llama 3.1 8B "
+                     "(Settings > AI connection > Change AI), or use ChatGPT, Claude or Grok.")
+
+
+def looks_like_tool_echo(text):
+    """True when a reply is raw tool-call syntax / a description of a function call instead of an answer."""
+    t = text or ""
+    return any(r.search(t) for r in _TOOL_ECHO)
+
+
+def weak_model(name):
+    return bool(name) and bool(WEAK_MODEL_RE.search(name))
+
+
+def model_advice(name):
+    if weak_model(name):
+        return ("%s is small and weak with tools: Hermes may answer with garbled or example tool-call text. "
+                "Qwen 2.5 7B, Qwen 3 8B or Llama 3.1 8B work much better (or use a cloud AI)." % name)
+    return ""
+
+
+def interpret_chat(code, out, key="", limit=300):
     """Turn a chat/completions response into {ok, reply} or {ok False, kind, error}."""
     if code == 0:
         return {"ok": False, "kind": "unreachable", "error": "Hermes isn't answering."}
@@ -986,4 +1032,7 @@ def interpret_chat(code, out, key=""):
     reply = ((ch.get("message") or {}).get("content") or "")
     if isinstance(reply, list):
         reply = "".join(p.get("text", "") for p in reply if isinstance(p, dict))
-    return {"ok": True, "reply": reply.strip()[:300]}
+    reply = reply.strip()
+    if looks_like_tool_echo(reply):
+        return {"ok": False, "kind": "tool_echo", "error": TOOL_ECHO_MESSAGE, "raw": reply[:300]}
+    return {"ok": True, "reply": reply[:limit] if limit else reply}

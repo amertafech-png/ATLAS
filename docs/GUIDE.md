@@ -30,6 +30,11 @@ a test message -> "Connected to ...". The choices: **ChatGPT** (browser sign-in)
 in Hermes' own files (`.env` / `auth.json` in the Hermes folder below), never in ATLAS. Change the AI any time in **Settings -> AI connection**.
 If the connection ever breaks, the friendly **Connect Hermes** card appears with a **Fix it** button.
 
+**Local models and tools.** Hermes gives the model a long prompt and a large list of tools. Small local models (**hermes3**, **llama3.2**, anything 1-3B) cannot follow it:
+they answer with example tool-call text ("Here is an example of a function call in the format you requested ... Tool: ..."). For a good experience pick a tool-capable model:
+**Qwen 2.5 7B**, **Qwen 3 8B** or **Llama 3.1 8B** (or use ChatGPT, Claude or Grok). ATLAS sets a 64k context for the model it connects, marks weak models in the list, retries once when it sees
+tool-call text, and then shows a friendly message instead of the garbage. **Settings -> AI connection -> Test my AI** asks a simple question and tells you if the model is too weak.
+
 ### What gets installed
 | | Windows | macOS |
 |---|---|---|
