@@ -3,7 +3,7 @@
 A feature is a Python file  bridge/modules/<id>.py  (shipped with MODI)  or  <MODI data dir>/modules/<id>.py
 (drop-in, survives app updates).  Files starting with "_" are ignored.  A module may define:
 
-    META = {"title": "...", "description": "...", "requirements": ["pip-package", ...], "ui": False}
+    META = {"title": "...", "description": "...", "requirements": ["pip-package", ...], "ui": False, "consent": "optional text the HUD asks the user to confirm before the feature is switched on"}
     async def start(ctx): ...          # called when the feature is enabled (and at bridge start if enabled)
     async def stop(ctx): ...           # called when disabled / bridge shuts down
     async def handle(ctx, request): .. # optional HTTP handler, reachable at  /api/m/<id>/<anything>
@@ -30,9 +30,9 @@ from pathlib import Path
 
 # Features planned for MODI.  They show up in Settings as "not installed yet" until a module file exists.
 CATALOG = {
-    "wake_word": {"title": "Wake word - \"Hey MODI\"",
-                  "description": "Always-listening local wake word (openWakeWord). Triggers the same flow as the mic button.",
-                  "requirements": ["openwakeword"]},
+    "wake_word": {"title": "Wake word",
+                  "description": "Say \"Hey <name>\" to start talking, hands-free. Fully local (Vosk).",
+                  "requirements": ["vosk"], "ui": True},
     "daily_brief": {"title": "Daily brief",
                     "description": "Weather, calendar, sports and news panel, built by Hermes on a schedule.",
                     "requirements": [], "ui": True},
@@ -197,7 +197,7 @@ class Features:
                 status = "off" if not self.enabled(fid) else "starting"
             out.append({"id": fid, "title": m["title"], "description": m.get("description", ""), "installed": installed,
                         "enabled": self.enabled(fid), "status": status, "missing": missing, "error": self.errors.get(fid, ""),
-                        "ui": bool(m.get("ui")) and bool(self.find(fid, ".js")), "settings": self.settings(fid)})
+                        "ui": bool(m.get("ui")) and bool(self.find(fid, ".js")), "consent": m.get("consent", ""), "settings": self.settings(fid)})
         return out
 
     # ---- lifecycle ----

@@ -74,11 +74,20 @@ window reloads by itself. Offline or no releases yet: it just says "Couldn't che
 **Settings -> Updates**, or in `config.json`: `"update": {"enabled": false}`. Other keys: `update.check_hours`, `update.repo` (default is
 set in `bridge/modi_meta.py`). 
 
-## Feature modules (for upcoming features)
+## Wake word
+Off by default. Switch it on in **Settings -> Features -> Wake word** (you are asked to confirm because it opens your microphone). Then say **"Hey MODI"** - or **"Hey <name>"** if you renamed the assistant in Settings -> Profile (the phrase follows the name, no training needed). MODI plays a short tone, the orb shows the listening animation, and it carries on exactly like the mic button: you speak, it answers out loud.
+* **Local and private:** the HUD window opens the mic and streams only short bursts of speech (silence is never sent) to the bridge on `127.0.0.1`, where a small offline speech model ([Vosk](https://alphacephei.com/vosk/), Apache-2.0) turns it into text that is compared with the phrase and thrown away. Nothing is recorded, saved or uploaded. No account, no API key.
+* **First use:** a ~41 MB model (`vosk-model-small-en-us-0.15`, SHA-256 verified) is downloaded once into `<data dir>/features/wake_word/` with a progress bar in Settings and in the **Wake** chip under the orb; the `vosk` pip package is installed from the Install button (or by the installer). After that it works offline.
+* **Indicator and mute:** the chip under the orb shows **Hey MODI** with a pulsing green dot while the microphone is armed (your browser also shows its own recording indicator). Click the chip - or Settings -> Mute - to mute: the microphone is released completely. It pauses by itself while MODI is listening, thinking or speaking, so it never answers itself.
+* **Accuracy tips:** speak the phrase naturally, then pause for the tone before the command (anything you say before the tone is not heard by the command recording). Names that are real words in the speech model (MODI, Nova, Jarvis, Friday ...) work best; made-up names are matched fuzzily. If a name keeps being misheard, add what it sounds like under **Also accept** (e.g. `moody`).
+* **Limits:** English only (small model); it needs the MODI window open (it lives in the HUD, so MODI cannot hear you if the window is closed); a noisy room, a far-away mic or speakers playing loudly lower accuracy; CPU use is near zero in silence and roughly a quarter of one core while someone is talking.
+* **Files:** `bridge/modules/wake_word.py` (engine, model download, WebSocket `/api/m/wake_word/ws`, mute/aliases/status endpoints) and `wake_word.js` (microphone capture, speech gate, tone, Settings controls). Tests: `bridge/dev/test_wake.py`.
+
+## Feature modules
 `bridge/modi_features.py` loads optional modules from `bridge/modules/<id>.py` (shipped) and `<data dir>/modules/<id>.py` (drop-ins that survive updates).
 Each module gets a `ctx` (settings, private data dir, `say`, `notify`, `ask` Hermes, `confirm` Yes/No dialog, `emit` events to the HUD) and may ship
 `<id>.js` to add a dock panel via `MODI.register(...)`. Settings toggles are in the HUD; state is saved in `config.json` under `features`.
-See `bridge/modules/_example.py`. Catalogued ids (shown as "coming soon" until a module exists): `wake_word`, `daily_brief`, `reminders`,
+See `bridge/modules/_example.py`. `wake_word.py` is the reference module with a UI. Other catalogued ids (shown as "coming soon" until a module exists): `daily_brief`, `reminders`,
 `computer_control`, `gestures`, `telegram`. Missing pip packages of an enabled feature are installed from the HUD ("Install") or by re-running the installer.
 
 ## Security notes
@@ -105,11 +114,11 @@ See `bridge/modules/_example.py`. Catalogued ids (shown as "coming soon" until a
 index.html                     the HUD
 bridge/bridge.py               local bridge (STT, TTS, Hermes calls, features API)
 bridge/modi_meta.py            version + GitHub repo (one place)   bridge/modi_update.py   self-updater
-bridge/modi_features.py        feature-module framework      bridge/modules/   feature modules (+ _example.py)
+bridge/modi_features.py        feature-module framework      bridge/modules/   feature modules (wake_word.py/.js, _example.py)
 bridge/config.json, requirements.txt
 win/MODI.ps1, MODI.vbs         Windows launcher              mac/modi-launch.sh   macOS launcher
 assets/modi.ico|png|icns       icons                         tools/make_icons.py, tools/build.py  (build the installers)
-bridge/dev/                    test tools only (mock Hermes, screenshot scripts)
+bridge/dev/                    test tools only (mock Hermes, test_update.py, test_wake.py, screenshot scripts)
 ```
 
 ## License
