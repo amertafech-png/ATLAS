@@ -5,13 +5,13 @@
 (function(){
 const API='/api/m/wake_word/';
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let st={state:'loading',progress:0,muted:false,phrase:'Hey MODI',aliases:[],error:'',text:''};
+let st={state:'loading',progress:0,muted:false,phrase:'Hey ATLAS',aliases:[],error:'',text:''};
 let enabled=true,ws=null,stream=null,actx=null,node=null,src=null,wantTimer=null,retry=0,lastFlash=0,permErr='';
 /* ---- speech gate (keeps the bridge idle while nobody talks) ---- */
 let ring=[],hot=0,speaking=false,sinceVoice=0,uttChunks=0,floor=0.004;
 const chip=()=>document.getElementById('wakechip');
 
-function paused(){return MODI.orb()!=='idle'}
+function paused(){return ATLAS.orb()!=='idle'}
 function resetGate(){ring=[];hot=0;speaking=false;sinceVoice=0;uttChunks=0}
 function send(buf){if(ws&&ws.readyState===1)ws.send(buf)}
 function onChunk(pcm,rms){
@@ -33,7 +33,7 @@ const WORKLET='class P extends AudioWorkletProcessor{constructor(){super();this.
  +'process(i){const ch=i[0]&&i[0][0];if(!ch)return true;for(let k=0;k<ch.length;k++){this.sum+=ch[k];this.cnt++;this.ph+=1;'
  +'if(this.ph>=this.r){const v=this.sum/this.cnt;this.ph-=this.r;this.sum=0;this.cnt=0;const c=Math.max(-1,Math.min(1,v));this.buf[this.n++]=c*32767;this.e+=c*c;'
  +'if(this.n===1600){this.port.postMessage({pcm:this.buf,rms:Math.sqrt(this.e/1600)},[this.buf.buffer]);this.buf=new Int16Array(1600);this.n=0;this.e=0}}}return true}}'
- +'registerProcessor("modi-wake",P)';
+ +'registerProcessor("atlas-wake",P)';
 
 async function openMic(){
   if(stream)return true;
@@ -45,7 +45,7 @@ async function openMic(){
       try{actx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000})}catch(e){actx=new (window.AudioContext||window.webkitAudioContext)()}
       const url=URL.createObjectURL(new Blob([WORKLET],{type:'application/javascript'}));
       try{await actx.audioWorklet.addModule(url)}finally{URL.revokeObjectURL(url)}
-      node=new AudioWorkletNode(actx,'modi-wake',{numberOfOutputs:0});node.port.onmessage=e=>onChunk(e.data.pcm,e.data.rms);
+      node=new AudioWorkletNode(actx,'atlas-wake',{numberOfOutputs:0});node.port.onmessage=e=>onChunk(e.data.pcm,e.data.rms);
     }
     src=actx.createMediaStreamSource(stream);src.connect(node);
     if(actx.state!=='running')await actx.resume().catch(()=>{});
@@ -75,10 +75,10 @@ function tone(){
 }
 function onWake(j){
   if(st.muted||paused())return;
-  MODI.log('Wake phrase heard · '+(j.phrase||st.phrase));
+  ATLAS.log('Wake phrase heard · '+(j.phrase||st.phrase));
   document.body.classList.add('wake-flash');setTimeout(()=>document.body.classList.remove('wake-flash'),1400);
   tone();
-  setTimeout(()=>{if(!st.muted&&MODI.orb()==='idle')MODI.listen({wake:true})},260);   /* after the tone, so it is not recorded */
+  setTimeout(()=>{if(!st.muted&&ATLAS.orb()==='idle')ATLAS.listen({wake:true})},260);   /* after the tone, so it is not recorded */
 }
 /* ---- state / chip ---- */
 function armed(){return enabled&&st.state==='ready'&&!st.muted&&!!stream&&!!ws&&ws.readyState===1}
@@ -94,10 +94,10 @@ function paint(){
     else{t='Wake · connecting…';cls+=' warn'}
     c.textContent=t;c.className=cls;c.title=title;
   }
-  if(window.MODI&&MODI.settingsChanged)MODI.settingsChanged('wake_word');
+  if(window.ATLAS&&ATLAS.settingsChanged)ATLAS.settingsChanged('wake_word');
 }
 async function refresh(){
-  try{st=Object.assign(st,await MODI.api(API+'status'));enabled=true}catch(e){/* feature stopped or bridge offline */ enabled=false}
+  try{st=Object.assign(st,await ATLAS.api(API+'status'));enabled=true}catch(e){/* feature stopped or bridge offline */ enabled=false}
   sync();
 }
 function sync(){
@@ -107,25 +107,25 @@ function sync(){
   paint();
 }
 async function toggleMute(){
-  try{st=Object.assign(st,await MODI.post(API+'mute',{muted:!st.muted}))}catch(e){}
+  try{st=Object.assign(st,await ATLAS.post(API+'mute',{muted:!st.muted}))}catch(e){}
   sync();
 }
 /* chip click: mute/unmute, retry on error, or open Settings when off */
 document.addEventListener('click',e=>{const c=chip();if(!c||!c.contains(e.target))return;
-  if(!enabled){MODI.openSettings('features');return}
-  if(st.state==='error'){MODI.post(API+'retry',{}).catch(()=>{});return}
+  if(!enabled){ATLAS.openSettings('features');return}
+  if(st.state==='error'){ATLAS.post(API+'retry',{}).catch(()=>{});return}
   if(permErr){permErr='';sync();return}
   if(st.state==='ready')toggleMute()});
-MODI.on('wake_state',m=>{if(m.feature!=='wake_word')return;const was=st.muted;st=Object.assign(st,m);enabled=true;
+ATLAS.on('wake_state',m=>{if(m.feature!=='wake_word')return;const was=st.muted;st=Object.assign(st,m);enabled=true;
   if(m.muted!==was||m.state==='ready'||(m.state!=='ready'&&stream))sync();else paint()});
-MODI.on('features',m=>{const f=(m.features||[]).find(x=>x.id==='wake_word');if(!f)return;
+ATLAS.on('features',m=>{const f=(m.features||[]).find(x=>x.id==='wake_word');if(!f)return;
   if(!f.enabled||f.status!=='running'){enabled=false;sync()}else refresh()});
-MODI.on('orb',()=>{/* paused state is read live in onChunk */});
+ATLAS.on('orb',()=>{/* paused state is read live in onChunk */});
 window.addEventListener('beforeunload',()=>{closeWs();closeMic(true)});
 setInterval(()=>{if(enabled&&st.state==='ready'&&!st.muted&&(!ws||ws.readyState>1)&&stream){if(retry<8){retry++;openWs()}}},3000);
 
 /* ---- Settings → Features: extra controls under the wake-word row ---- */
-MODI.register('wake_word',{title:'Wake word',dock:false,render(){},settings(el){
+ATLAS.register('wake_word',{title:'Wake word',dock:false,render(){},settings(el){
   const prog=st.state==='downloading'||st.state==='loading';
   let h='<div class="wk"><div class="wkrow"><span class="lab">Say</span><b class="wkphrase">'+esc(st.phrase)+'</b>'
     +'<span class="lab" style="margin-left:1vw">Change the name in Settings → Profile → Assistant</span></div>';
@@ -137,8 +137,8 @@ MODI.register('wake_word',{title:'Wake word',dock:false,render(){},settings(el){
     +'<div class="msg" style="opacity:.8">Mic is opened by this window only while armed; audio is analysed on this computer, never saved or sent. Engine: '+esc(st.engine||'Vosk')+' (offline).</div></div>';
   el.innerHTML=h;
   const m=el.querySelector('#wkmute');if(m)m.onclick=toggleMute;
-  const r=el.querySelector('#wkretry');if(r)r.onclick=()=>MODI.post(API+'retry',{}).catch(()=>{});
-  el.querySelector('#wksave').onclick=async()=>{try{st=Object.assign(st,await MODI.post(API+'aliases',{aliases:el.querySelector('#wkalias').value}));paint()}catch(e){}};
+  const r=el.querySelector('#wkretry');if(r)r.onclick=()=>ATLAS.post(API+'retry',{}).catch(()=>{});
+  el.querySelector('#wksave').onclick=async()=>{try{st=Object.assign(st,await ATLAS.post(API+'aliases',{aliases:el.querySelector('#wkalias').value}));paint()}catch(e){}};
 }});
 refresh();
 })();

@@ -1,6 +1,6 @@
 # Security policy
 
-MODI can talk to an AI agent that can act on your computer, so security reports are taken seriously.
+ATLAS can talk to an AI agent that can act on your computer, so security reports are taken seriously.
 
 ## Reporting a vulnerability - privately
 Please **do not open a public issue** for security problems.
@@ -18,8 +18,8 @@ You'll get an acknowledgement as soon as the maintainer can; please allow reason
 * Feature modules acting on the computer without the required confirmation.
 
 ## Supported versions
-Only the latest release receives fixes. MODI updates itself - use the **Update** button when it appears.
+Only the latest release receives fixes. ATLAS updates itself - use the **Update** button when it appears.
 
 ## For users
 * Keep Hermes' API server on `127.0.0.1` (the default); never expose it to a network.
-* Only download MODI from this repository's Releases page and compare the SHA-256 with `SHA256SUMS` if you like.
+* Only download ATLAS from this repository's Releases page and compare the SHA-256 with `SHA256SUMS` if you like.

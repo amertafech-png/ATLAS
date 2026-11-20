@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# MODI must not depend on Windows Script Host (wscript / cscript / .vbs / .js / .wsf launchers, WScript.Shell COM).
-# The only allowed mentions are the lines tagged "#legacy-wsh": the code that migrates shortcuts written by MODI <= 1.2.0.
+# ATLAS must not depend on Windows Script Host (wscript / cscript / .vbs / .js / .wsf launchers, WScript.Shell COM).
+# The only allowed mentions are the lines tagged "#legacy-wsh": the code that migrates shortcuts written by v1.1.x (before the rename).
 set -u
 cd "$(dirname "$0")/.."
 bad=$(grep -rniE 'wscript|cscript|\.vbs|\.wsf|\.vbe|\.jse|WScript\.Shell|Scripting\.FileSystemObject|CreateObject' \

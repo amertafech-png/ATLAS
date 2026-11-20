@@ -3,11 +3,11 @@
   python bridge/dev/test_wake.py [--work DIR] [--voices N] [--quick]
 
 Builds test audio on the fly with Piper TTS (voices are downloaded into --work on first run, ~65 MB each; nothing is
-committed to the repo), downloads the Vosk model the same way the feature does (or uses $MODI_WAKE_MODEL), then:
+committed to the repo), downloads the Vosk model the same way the feature does (or uses $ATLAS_WAKE_MODEL), then:
   1. matcher unit tests (text level, incl. renamed phrase, aliases, unknown names)
-  2. spotter tests: spoken "Hey Modi" / "Hey Nova" (several voices, speeds, noise, low volume) must trigger, other speech must not
+  2. spotter tests: spoken "Hey Atlas" / "Hey Nova" (several voices, speeds, noise, low volume) must trigger, other speech must not
   3. integration: starts a real bridge, enables the feature, streams audio over the WebSocket exactly like the HUD,
-     checks the SSE "wake" event, renaming the assistant (Modi -> Nova), mute, and reports CPU per second of audio
+     checks the SSE "wake" event, renaming the assistant (Atlas -> Nova), mute, and reports CPU per second of audio
 """
 import argparse, asyncio, io, json, os, subprocess, sys, tempfile, time, wave
 from pathlib import Path
@@ -22,7 +22,7 @@ spec = importlib.util.spec_from_file_location("wake_word", BRIDGE / "modules" / 
 ww = importlib.util.module_from_spec(spec); spec.loader.exec_module(ww)
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--work", default=os.path.join(tempfile.gettempdir(), "modi-wake-test"))
+ap.add_argument("--work", default=os.path.join(tempfile.gettempdir(), "atlas-wake-test"))
 ap.add_argument("--voices", type=int, default=2, help="how many Piper voices to use (1-4)")
 ap.add_argument("--quick", action="store_true")
 args = ap.parse_args()
@@ -35,18 +35,18 @@ def check(name, ok, detail=""):
 
 # ---------------------------------------------------------------- 1. matcher
 M = ww.Matcher
-check("matcher: exact phrase", M("Hey MODI").match("hey modi"))
-check("matcher: followed by a command", M("Hey MODI").match("hey modi what is the weather"))
-check("matcher: leading filler word", M("Hey MODI").match("um hey modi"))
-check("matcher: hay/he variants of 'hey'", M("Hey MODI").match("hay modi") and M("Hey MODI").match("he modi"))
-check("matcher: renamed phrase", M("Hey Nova").match("hey nova play music") and not M("Hey Nova").match("hey modi"))
-check("matcher: old name no longer works", not M("Hey Nova").match("hey modi"))
-check("matcher: mid-sentence mention is ignored", not M("Hey MODI").match("i told him that hey modi is a nice name"))
-check("matcher: similar word is not enough for a known name", not M("Hey MODI").match("hey molly") and not M("Hey MODI").match("hey moody"))
-check("matcher: alias (sounds-like) works", M("Hey MODI", aliases=["moody"]).match("hey moody"))
+check("matcher: exact phrase", M("Hey ATLAS").match("hey atlas"))
+check("matcher: followed by a command", M("Hey ATLAS").match("hey atlas what is the weather"))
+check("matcher: leading filler word", M("Hey ATLAS").match("um hey atlas"))
+check("matcher: hay/he variants of 'hey'", M("Hey ATLAS").match("hay atlas") and M("Hey ATLAS").match("he atlas"))
+check("matcher: renamed phrase", M("Hey Nova").match("hey nova play music") and not M("Hey Nova").match("hey atlas"))
+check("matcher: the old product name does not wake ATLAS", not M("Hey ATLAS").match("hey modi"))   # legacy-modi
+check("matcher: mid-sentence mention is ignored", not M("Hey ATLAS").match("i told him that hey atlas is a nice name"))
+check("matcher: similar word is not enough for a known name", not M("Hey ATLAS").match("hey molly") and not M("Hey ATLAS").match("hey atlantic") and not M("Hey ATLAS").match("hey atlanta"))
+check("matcher: alias (sounds-like) works", M("Hey ATLAS", aliases=["at last"]).match("hey at last"))
 check("matcher: unknown name matches fuzzily", M("Hey Zorbeck", oov=lambda w: True).match("hey zorbec") and not M("Hey Zorbeck", oov=lambda w: True).match("hey zebra"))
 check("matcher: digits in names", M("Hey Jarvis 2").match("hey jarvis two"))
-check("matcher: empty text", not M("Hey MODI").match(""))
+check("matcher: empty text", not M("Hey ATLAS").match(""))
 
 # ---------------------------------------------------------------- audio fixtures (Piper)
 def synth_all():
@@ -57,12 +57,12 @@ def synth_all():
             print("downloading Piper voice", v, flush=True)
             subprocess.run([sys.executable, "-m", "piper.download_voices", v, "--download-dir", str(vd)], check=True, capture_output=True)
     rng = np.random.default_rng(7)
-    out = {"pos_modi": [], "pos_nova": [], "neg": []}
-    POS = {"pos_modi": ["Hey Modi", "Hey Modi, what is the weather today"], "pos_nova": ["Hey Nova", "Hey Nova, play some music"]}
+    out = {"pos_atlas": [], "pos_nova": [], "neg": []}
+    POS = {"pos_atlas": ["Hey Atlas", "Hey Atlas, what is the weather today"], "pos_nova": ["Hey Nova", "Hey Nova, play some music"]}
     NEG = ["Hello there, how are you", "What time is it", "The weather is nice today", "Hey Molly, come over here",
            "Okay computer, open the door", "Today we talked about modern design", "Hey buddy how are you doing",
            "I need a new phone", "Hey Noah can you hear me", "A nova is a star that suddenly brightens",
-           "Please remind me to call mom", "Hey Moody Blues is a band", "Modi is a name I have heard before",
+           "Please remind me to call mom", "Hey Atlantic City is a nice town", "Atlas is a name I have heard before",
            "Turn the lights off in the kitchen", "Hey Mommy, look at this"]
     def pcm(v, text, ls):
         buf = io.BytesIO()
@@ -92,7 +92,7 @@ def synth_all():
             out["neg"].append((f"{vn}/{t}", finish(pcm(v, t, 1.0))))
     return out
 
-t0 = time.time(); AUD = synth_all(); print(f"fixtures: {len(AUD['pos_modi'])} 'Hey Modi', {len(AUD['pos_nova'])} 'Hey Nova', {len(AUD['neg'])} other speech ({time.time()-t0:.0f}s)")
+t0 = time.time(); AUD = synth_all(); print(f"fixtures: {len(AUD['pos_atlas'])} 'Hey Atlas', {len(AUD['pos_nova'])} 'Hey Nova', {len(AUD['neg'])} other speech ({time.time()-t0:.0f}s)")
 
 # ---------------------------------------------------------------- Vosk model
 class FakeCtx:                                         # just enough of Ctx for the module helpers
@@ -102,7 +102,7 @@ mdir = ww.model_dir(ctx0)
 if not ww.model_ready(mdir):
     print("downloading Vosk model ...", flush=True)
     ww.download_model(mdir, lambda f, t: None, lambda: False)
-os.environ["MODI_WAKE_MODEL"] = str(mdir)
+os.environ["ATLAS_WAKE_MODEL"] = str(mdir)
 from vosk import Model, SetLogLevel                    # noqa: E402
 SetLogLevel(-1); model = Model(str(mdir))
 
@@ -122,20 +122,20 @@ def rate(label, phrase, items, want):
     return hits, len(items), cpu / max(aud, 1e-9), missed
 
 # ---------------------------------------------------------------- 2. spotter on spoken audio
-h, n, rtf, miss = rate("pos", "Hey MODI", AUD["pos_modi"], True)
-check(f"spotter: 'Hey MODI' spoken ({n} clips: voices x speeds x noise/quiet)", h / n >= 0.9, f"{h}/{n} triggered, CPU {rtf*100:.0f}% of real time while speech is present" + (f"; missed {miss[:3]}" if miss else ""))
+h, n, rtf, miss = rate("pos", "Hey ATLAS", AUD["pos_atlas"], True)
+check(f"spotter: 'Hey ATLAS' spoken ({n} clips: voices x speeds x noise/quiet)", h / n >= 0.9, f"{h}/{n} triggered, CPU {rtf*100:.0f}% of real time while speech is present" + (f"; missed {miss[:3]}" if miss else ""))
 h, n, rtf, miss = rate("pos", "Hey Nova", AUD["pos_nova"], True)
 check(f"spotter: renamed phrase 'Hey Nova' spoken ({n} clips; Piper adds randomness, so >=75% is required)", h / n >= 0.75, f"{h}/{n} triggered" + (f"; missed {miss[:3]}" if miss else ""))
-h, n, rtf, miss = rate("neg", "Hey MODI", AUD["neg"], False)
-check(f"spotter: other speech does not trigger 'Hey MODI' ({n} clips)", h == 0, f"{h}/{n} false triggers" + (f": {miss[:3]}" if miss else ""))
+h, n, rtf, miss = rate("neg", "Hey ATLAS", AUD["neg"], False)
+check(f"spotter: other speech does not trigger 'Hey ATLAS' ({n} clips)", h == 0, f"{h}/{n} false triggers" + (f": {miss[:3]}" if miss else ""))
 h, n, rtf, miss = rate("neg", "Hey Nova", AUD["neg"], False)
 check(f"spotter: other speech does not trigger 'Hey Nova' ({n} clips)", h == 0, f"{h}/{n} false triggers" + (f": {miss[:3]}" if miss else ""))
-h, n, _, miss = rate("x", "Hey Nova", AUD["pos_modi"], False)
-check("spotter: 'Hey Modi' does not trigger after renaming to Nova", h == 0, f"{h}/{n} false triggers")
-h, n, _, _ = rate("x", "Hey MODI", AUD["pos_nova"], False)
-check("spotter: 'Hey Nova' does not trigger 'Hey MODI'", h == 0, f"{h}/{n} false triggers")
+h, n, _, miss = rate("x", "Hey Nova", AUD["pos_atlas"], False)
+check("spotter: 'Hey Atlas' does not trigger after renaming to Nova", h == 0, f"{h}/{n} false triggers")
+h, n, _, _ = rate("x", "Hey ATLAS", AUD["pos_nova"], False)
+check("spotter: 'Hey Nova' does not trigger 'Hey ATLAS'", h == 0, f"{h}/{n} false triggers")
 silence = np.zeros(16000 * 5, dtype="<i2"); noise = (np.random.default_rng(1).normal(0, 300, 16000 * 5)).astype("<i2")
-check("spotter: silence / hiss does not trigger", not run_spotter("Hey MODI", silence)[0] and not run_spotter("Hey MODI", noise)[0])
+check("spotter: silence / hiss does not trigger", not run_spotter("Hey ATLAS", silence)[0] and not run_spotter("Hey ATLAS", noise)[0])
 
 # ---------------------------------------------------------------- 2b. model download (local fake server: progress, checksum, zip-slip)
 def download_tests():
@@ -181,7 +181,7 @@ async def integration():
         so.bind(("127.0.0.1", 0)); port = so.getsockname()[1]
     home = WORK / "home"; import shutil; shutil.rmtree(home, ignore_errors=True); home.mkdir(parents=True)
     (home / "config.json").write_text(json.dumps({"port": port, "features": {"wake_word": {"enabled": True, "settings": {}}}}))
-    env = dict(os.environ, MODI_HOME=str(home), MODI_UPDATE_API="http://127.0.0.1:9", HERMES_API_KEY="test-key", MODI_WAKE_MODEL=str(mdir))
+    env = dict(os.environ, ATLAS_HOME=str(home), ATLAS_UPDATE_API="http://127.0.0.1:9", HERMES_API_KEY="test-key", ATLAS_WAKE_MODEL=str(mdir))
     proc = subprocess.Popen([sys.executable, str(BRIDGE / "bridge.py")], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     base = f"http://127.0.0.1:{port}"
     try:
@@ -244,9 +244,9 @@ async def integration():
                     except asyncio.TimeoutError: pass
                 return woke
 
-            modi = AUD["pos_modi"][0][1]; nova = AUD["pos_nova"][0][1]; other = AUD["neg"][0][1]
-            events.clear(); w = await stream(modi); await asyncio.sleep(0.3)
-            check("integration: 'Hey Modi' -> websocket wake + SSE 'wake' event", w and any(e["type"] == "wake" for e in events))
+            atlas = AUD["pos_atlas"][0][1]; nova = AUD["pos_nova"][0][1]; other = AUD["neg"][0][1]
+            events.clear(); w = await stream(atlas); await asyncio.sleep(0.3)
+            check("integration: 'Hey Atlas' -> websocket wake + SSE 'wake' event", w and any(e["type"] == "wake" for e in events))
             events.clear(); w = await stream(other); await asyncio.sleep(0.3)
             check("integration: other speech -> nothing", not w and not any(e["type"] == "wake" for e in events))
             # rename the assistant exactly like HUD Settings does
@@ -257,8 +257,8 @@ async def integration():
             events.clear(); w = await stream(nova); await asyncio.sleep(0.3)
             check("integration: 'Hey Nova' wakes it after the rename", w and any(e["type"] == "wake" and e.get("phrase") == "Hey Nova" for e in events))
             await asyncio.sleep(2.6)
-            w = await stream(modi)
-            check("integration: old name 'Hey Modi' no longer wakes it", not w)
+            w = await stream(atlas)
+            check("integration: old name 'Hey Atlas' no longer wakes it", not w)
             # mute
             async with s.post(base + "/api/m/wake_word/mute", json={"muted": True}) as r: st = await r.json()
             await asyncio.sleep(2.6); events.clear(); w = await stream(nova)

@@ -1,13 +1,13 @@
-"""MODI feature framework: optional feature modules with settings toggles.
+"""ATLAS feature framework: optional feature modules with settings toggles.
 
-A feature is a Python file  bridge/modules/<id>.py  (shipped with MODI)  or  <MODI data dir>/modules/<id>.py
+A feature is a Python file  bridge/modules/<id>.py  (shipped with ATLAS)  or  <ATLAS data dir>/modules/<id>.py
 (drop-in, survives app updates).  Files starting with "_" are ignored.  A module may define:
 
     META = {"title": "...", "description": "...", "requirements": ["pip-package", ...], "ui": False, "consent": "optional text the HUD asks the user to confirm before the feature is switched on"}
     async def start(ctx): ...          # called when the feature is enabled (and at bridge start if enabled)
     async def stop(ctx): ...           # called when disabled / bridge shuts down
     async def handle(ctx, request): .. # optional HTTP handler, reachable at  /api/m/<id>/<anything>
-If META["ui"] is true, the HUD also loads  bridge/modules/<id>.js  (same folder rules) which calls MODI.register(...).
+If META["ui"] is true, the HUD also loads  bridge/modules/<id>.js  (same folder rules) which calls ATLAS.register(...).
 
 ctx gives a module everything it may use, so features never import bridge.py internals:
     ctx.settings     dict of this feature's saved settings          ctx.save_settings(dict)
@@ -28,7 +28,7 @@ import time
 import uuid
 from pathlib import Path
 
-# Features planned for MODI.  They show up in Settings as "not installed yet" until a module file exists.
+# Features planned for ATLAS.  They show up in Settings as "not installed yet" until a module file exists.
 CATALOG = {
     "wake_word": {"title": "Wake word",
                   "description": "Say \"Hey <name>\" to start talking, hands-free. Fully local (Vosk).",
@@ -37,7 +37,7 @@ CATALOG = {
                     "description": "Weather, calendar, sports and news panel, built by Hermes on a schedule.",
                     "requirements": [], "ui": True},
     "reminders": {"title": "Reminders & timers",
-                  "description": "Set reminders and timers by voice; MODI speaks them when due.", "requirements": []},
+                  "description": "Set reminders and timers by voice; ATLAS speaks them when due.", "requirements": []},
     "computer_control": {"title": "Computer control",
                          "description": "Open apps, play music, find files. Destructive actions always ask first.",
                          "requirements": []},
@@ -45,13 +45,13 @@ CATALOG = {
                  "description": "Wave / point / pinch controls from the webcam, own implementation.",
                  "requirements": [], "ui": True},
     "telegram": {"title": "Telegram phone access",
-                 "description": "Talk to MODI from your phone through your own Telegram bot (outbound polling only).",
+                 "description": "Talk to ATLAS from your phone through your own Telegram bot (outbound polling only).",
                  "requirements": []},
 }
 
 
 def _load_file(path: Path, fid: str):
-    spec = importlib.util.spec_from_file_location(f"modi_feature_{fid}", path)
+    spec = importlib.util.spec_from_file_location(f"atlas_feature_{fid}", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -91,8 +91,8 @@ class Ctx:
 
     @property
     def assistant_name(self):
-        """What the user calls the assistant (default MODI). Wake word modules listen for ctx.wake_phrase ("Hey <name>")."""
-        return ((self._fw.cfg.get("assistant") or {}).get("name") or "MODI")
+        """What the user calls the assistant (default ATLAS). Wake word modules listen for ctx.wake_phrase ("Hey <name>")."""
+        return ((self._fw.cfg.get("assistant") or {}).get("name") or "ATLAS")
 
     @property
     def wake_phrase(self):

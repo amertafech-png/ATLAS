@@ -1,4 +1,4 @@
-<#  MODI launcher (Windows).  The MODI shortcuts run this file with powershell.exe directly (no Windows Script Host).
+<#  ATLAS launcher (Windows).  The ATLAS shortcuts run this file with powershell.exe directly (no Windows Script Host).
       -Mode Launch  (default) start the bridge hidden if needed (never a second one), wait for /api/health,
                     then open the app window - or bring it to the front if it is already open
       -Mode Bridge  start only the bridge
@@ -7,9 +7,9 @@
 param([ValidateSet('Launch','Bridge','Stop')][string]$Mode = 'Launch')
 $ErrorActionPreference = 'Stop'
 
-$Root   = Split-Path -Parent $PSScriptRoot                       # ...\MODI\app
-$Data   = if ($env:MODI_HOME) { $env:MODI_HOME } else { Join-Path $env:LOCALAPPDATA 'MODI' }
-$Py     = if ($env:MODI_PY) { $env:MODI_PY } else { Join-Path $Root '.venv\Scripts\python.exe' }
+$Root   = Split-Path -Parent $PSScriptRoot                       # ...\ATLAS\app
+$Data   = if ($env:ATLAS_HOME) { $env:ATLAS_HOME } else { Join-Path $env:LOCALAPPDATA 'ATLAS' }
+$Py     = if ($env:ATLAS_PY) { $env:ATLAS_PY } else { Join-Path $Root '.venv\Scripts\python.exe' }
 $Bridge = Join-Path $Root 'bridge\bridge.py'
 $Logs   = Join-Path $Data 'logs'
 $Port   = 8765
@@ -20,14 +20,14 @@ if ($env:JARVIS_PORT) { $Port = [int]$env:JARVIS_PORT }
 $Url = "http://127.0.0.1:$Port"
 
 function Show-Msg([string]$Text) {
-    try { Add-Type -AssemblyName System.Windows.Forms; [void][System.Windows.Forms.MessageBox]::Show($Text, 'MODI') } catch { Write-Host $Text }
+    try { Add-Type -AssemblyName System.Windows.Forms; [void][System.Windows.Forms.MessageBox]::Show($Text, 'ATLAS') } catch { Write-Host $Text }
 }
 function Test-Bridge {
     try { $r = Invoke-WebRequest -UseBasicParsing -Uri "$Url/api/health" -TimeoutSec 2; return ($r.StatusCode -eq 200) } catch { return $false }
 }
-function Start-ModiBridge {
+function Start-AtlasBridge {
     if (Test-Bridge) { return $true }
-    if (-not (Test-Path $Py)) { Show-Msg "MODI is not installed correctly (Python environment missing).`nRun MODI-Setup.bat again."; return $false }
+    if (-not (Test-Path $Py)) { Show-Msg "ATLAS is not installed correctly (Python environment missing).`nRun ATLAS-Setup.bat again."; return $false }
     New-Item -ItemType Directory -Force -Path $Logs | Out-Null
     $out = Join-Path $Logs 'bridge.log'; $err = Join-Path $Logs 'bridge.err.log'
     $p = Start-Process -FilePath $Py -ArgumentList @("`"$Bridge`"") -WorkingDirectory (Join-Path $Root 'bridge') `
@@ -39,11 +39,11 @@ function Start-ModiBridge {
     }
     $tail = ''
     if (Test-Path $err) { $tail = (Get-Content $err -Tail 8) -join "`n" }
-    Show-Msg "MODI's bridge did not start.`n`n$tail`n`nLogs: $Logs"
+    Show-Msg "ATLAS's bridge did not start.`n`n$tail`n`nLogs: $Logs"
     return $false
 }
 function Get-AppWindowPid([string]$appdata) {
-    # the browser's main process for MODI's private profile folder (the one that owns the visible window)
+    # the browser's main process for ATLAS's private profile folder (the one that owns the visible window)
     try {
         $procs = Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe'" -ErrorAction Stop
         foreach ($p in $procs) {
@@ -60,11 +60,11 @@ function Show-ExistingWindow([string]$appdata) {
     $gp = Get-AppWindowPid $appdata
     if (-not $gp) { return $false }
     try {
-        if (-not ('ModiWin' -as [type])) {
+        if (-not ('AtlasWin' -as [type])) {
             Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public static class ModiWin {
+public static class AtlasWin {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
@@ -72,8 +72,8 @@ public static class ModiWin {
 '@
         }
         $h = $gp.MainWindowHandle
-        if ([ModiWin]::IsIconic($h)) { [void][ModiWin]::ShowWindow($h, 9) }   # SW_RESTORE
-        [void][ModiWin]::SetForegroundWindow($h)
+        if ([AtlasWin]::IsIconic($h)) { [void][AtlasWin]::ShowWindow($h, 9) }   # SW_RESTORE
+        [void][AtlasWin]::SetForegroundWindow($h)
         return $true
     } catch {
         try { Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.Interaction]::AppActivate($gp.Id); return $true } catch { return $false }
@@ -104,19 +104,19 @@ switch ($Mode) {
         }
     }
     'Bridge' {                                                      # used by "start at login"
-        $mutex = New-Object System.Threading.Mutex($false, 'Local\MODI-Launcher')
+        $mutex = New-Object System.Threading.Mutex($false, 'Local\ATLAS-Launcher')
         $held = $false
         try { $held = $mutex.WaitOne(150000) } catch [System.Threading.AbandonedMutexException] { $held = $true }
-        try { [void](Start-ModiBridge) } finally { if ($held) { try { $mutex.ReleaseMutex() } catch { } } }
+        try { [void](Start-AtlasBridge) } finally { if ($held) { try { $mutex.ReleaseMutex() } catch { } } }
     }
     default {
         $appdata = Join-Path $Data 'appdata'
         # one launch at a time: a second double-click waits here instead of starting a duplicate bridge or window
-        $mutex = New-Object System.Threading.Mutex($false, 'Local\MODI-Launcher')
+        $mutex = New-Object System.Threading.Mutex($false, 'Local\ATLAS-Launcher')
         $held = $false
         try { $held = $mutex.WaitOne(150000) } catch [System.Threading.AbandonedMutexException] { $held = $true }
         try {
-            if (-not (Start-ModiBridge)) { exit 1 }
+            if (-not (Start-AtlasBridge)) { exit 1 }
             if (Show-ExistingWindow $appdata) { exit 0 }
         } finally { if ($held) { try { $mutex.ReleaseMutex() } catch { } } }
         $browser = Find-Browser

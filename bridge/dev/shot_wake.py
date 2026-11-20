@@ -1,6 +1,6 @@
 """Dev-only: drive the HUD in headless Chrome with a fake microphone that "says" the wake phrase, and take screenshots.
-Needs a running bridge (MODI_WAKE_MODEL=<vosk model dir> so nothing is downloaded), the mock Hermes (mock_hermes.py),
-Playwright + Chrome, and a 16 kHz mono WAV with silence then "Hey Modi" at FAKE_MIC (default /tmp/fake_wake.wav).
+Needs a running bridge (ATLAS_WAKE_MODEL=<vosk model dir> so nothing is downloaded), the mock Hermes (mock_hermes.py),
+Playwright + Chrome, and a 16 kHz mono WAV with silence then "Hey Atlas" at FAKE_MIC (default /tmp/fake_wake.wav).
   python shot_wake.py [outdir]     writes wake-settings.png and wake-listening.png"""
 import os, sys, time
 from playwright.sync_api import sync_playwright

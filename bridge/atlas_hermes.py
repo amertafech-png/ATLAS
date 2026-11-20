@@ -1,8 +1,8 @@
-"""MODI <-> Hermes connection manager.
+"""ATLAS <-> Hermes connection manager.
 
-Takes a non-technical user from "just installed MODI" to "chat works":
+Takes a non-technical user from "just installed ATLAS" to "chat works":
   * find the Hermes CLI even when it is not on PATH (fresh Windows installs only add it to the *user* PATH
-    of future terminals; MODI is often started from a shortcut that never sees that PATH)
+    of future terminals; ATLAS is often started from a shortcut that never sees that PATH)
   * find (or create) the Hermes API-server key - Hermes keeps it in <HERMES_HOME>/.env as API_SERVER_KEY, or in
     config.yaml under gateway.api_server.key.  Never printed, never shown in the HUD, never in the repo.
   * enable the API server, start / restart the Hermes gateway, check /health on 127.0.0.1:8642
@@ -39,7 +39,7 @@ URL_RE = re.compile(r"https?://[^\s\"'<>\x1b]+")
 USERCODE_RE = re.compile(r"\b([A-Z0-9]{4}-[A-Z0-9]{4,5})\b")
 PLACEHOLDER_KEYS = ("change-me", "changeme", "your-secret", "your_secret", "example")
 
-# provider id (what MODI's HUD sends) -> how to connect it through Hermes
+# provider id (what ATLAS's HUD sends) -> how to connect it through Hermes
 PROVIDERS = {
     "chatgpt":     {"label": "ChatGPT",        "kind": "oauth", "hermes": "openai-codex",
                     "auth": ["auth", "add", "openai-codex", "--browser"], "auth_fallback": ["auth", "add", "openai-codex", "--type", "oauth"],
@@ -105,9 +105,9 @@ def set_env_values(path, updates, keep_backups=5):
     if path.exists():
         existing = path.read_bytes().decode("utf-8", errors="ignore")
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        bak = path.with_name(path.name + ".modi-backup-" + stamp)
+        bak = path.with_name(path.name + ".atlas-backup-" + stamp)
         shutil.copy2(path, bak)
-        baks = sorted(path.parent.glob(path.name + ".modi-backup-*"))
+        baks = sorted(path.parent.glob(path.name + ".atlas-backup-*"))
         for old in baks[:-keep_backups]:
             try:
                 old.unlink()
@@ -129,7 +129,7 @@ def set_env_values(path, updates, keep_backups=5):
     for k, v in updates.items():
         if k not in done:
             out.append(f"{k}={v}")
-    tmp = path.with_name(path.name + ".modi-tmp")
+    tmp = path.with_name(path.name + ".atlas-tmp")
     tmp.write_bytes((nl.join(out) + nl).encode("utf-8"))
     try:
         os.chmod(tmp, mode)
@@ -370,7 +370,7 @@ class HermesManager:
 
     def resolve_api_key(self):
         """The key Hermes itself is configured with wins (it is the one the gateway checks, and it follows any rotation);
-        then a key typed into MODI's config.json (e.g. Hermes on another machine); then MODI's saved copy.
+        then a key typed into ATLAS's config.json (e.g. Hermes on another machine); then ATLAS's saved copy.
         Set hermes.read_key_from_hermes_env=false to make the typed key win instead."""
         h = self.cfg["hermes"]
         typed = (h.get("api_key") or "").strip()
@@ -394,7 +394,7 @@ class HermesManager:
             pass
 
     def adopt_key(self):
-        """If Hermes has a key and MODI has no copy of it yet, remember it.  Silent; returns the source or ''."""
+        """If Hermes has a key and ATLAS has no copy of it yet, remember it.  Silent; returns the source or ''."""
         k, src = self.live_key()
         if k and k != self.saved_key():
             self.save_key_copy(k)
@@ -418,7 +418,7 @@ class HermesManager:
         return v.strip().lower() in ("1", "true", "yes", "on")
 
     def api_url(self):
-        """Explicit api_url from MODI's config if it differs from the default, else follow Hermes' own port setting."""
+        """Explicit api_url from ATLAS's config if it differs from the default, else follow Hermes' own port setting."""
         url = (self.cfg["hermes"].get("api_url") or "http://127.0.0.1:8642").rstrip("/")
         if url != "http://127.0.0.1:8642":
             return url
@@ -504,7 +504,7 @@ class HermesManager:
                     pr["ok"] = bool(self.test_chat()["ok"])
                 finally:
                     pr["t"], pr["busy"] = time.time(), False
-            threading.Thread(target=run, daemon=True, name="modi-ai-probe").start()
+            threading.Thread(target=run, daemon=True, name="atlas-ai-probe").start()
         return pr["ok"] is not False
 
     def provider_label(self):
@@ -597,7 +597,7 @@ class HermesManager:
                 if s["state"] == "run":
                     s["state"] = "fail" if j.status == "error" else "pending"
             self.invalidate()
-        threading.Thread(target=run, daemon=True, name="modi-setup-" + kind).start()
+        threading.Thread(target=run, daemon=True, name="atlas-setup-" + kind).start()
         return j.public(), True
 
     def cancel(self, jid):
@@ -663,12 +663,12 @@ class HermesManager:
 
     def _do_install(self, job):
         job.step("download", "run")
-        tmpd = Path(tempfile.mkdtemp(prefix="modi-hermes-"))
+        tmpd = Path(tempfile.mkdtemp(prefix="atlas-hermes-"))
         try:
             script = tmpd / ("install.ps1" if IS_WIN else "install.sh")
-            url = os.environ.get("MODI_HERMES_INSTALL_URL") or (INSTALL_PS1 if IS_WIN else INSTALL_SH)   # env hook: tests only
+            url = os.environ.get("ATLAS_HERMES_INSTALL_URL") or (INSTALL_PS1 if IS_WIN else INSTALL_SH)   # env hook: tests only
             try:
-                with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "MODI"}), timeout=60) as r:
+                with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "ATLAS"}), timeout=60) as r:
                     data = r.read()
             except Exception as e:  # noqa
                 raise SetupError("Could not download the Hermes installer from %s (%s). Check your internet connection and try again." % (url, type(e).__name__), "download")
@@ -697,10 +697,10 @@ class HermesManager:
             job.step("install", "ok")
             job.step("verify", "run")
             if not exe:
-                raise SetupError("The installer finished but MODI still cannot find Hermes. Open a new MODI window or restart the computer, then press Fix it.", "not_found")
+                raise SetupError("The installer finished but ATLAS still cannot find Hermes. Open a new ATLAS window or restart the computer, then press Fix it.", "not_found")
             job.step("verify", "ok")
             if rc != 0:
-                job.result["warning"] = "Hermes installed, but its installer reported a problem with an optional part. That's OK for MODI."
+                job.result["warning"] = "Hermes installed, but its installer reported a problem with an optional part. That's OK for ATLAS."
             job.result["cli"] = "found"
         finally:
             shutil.rmtree(tmpd, ignore_errors=True)
@@ -711,7 +711,7 @@ class HermesManager:
                                    ("start", "Starting Hermes"), ("check", "Checking that Hermes answers")], self._do_fix)
 
     def new_key(self):
-        return "modi-" + secrets.token_hex(24)
+        return "atlas-" + secrets.token_hex(24)
 
     def ensure_key_and_api(self):
         """Make sure Hermes has an API key and has the API server enabled.  Returns what changed (a set)."""
@@ -760,7 +760,7 @@ class HermesManager:
             try:
                 logd = self.home() / "logs"
                 logd.mkdir(parents=True, exist_ok=True)
-                lf = open(logd / "modi-gateway.log", "ab")
+                lf = open(logd / "atlas-gateway.log", "ab")
                 subprocess.Popen([exe, "gateway", "run"], stdin=subprocess.DEVNULL, stdout=lf, stderr=lf, env=self.cli_env(), **_flags(detached=True))
             except OSError as e:
                 log("Could not start Hermes: %s" % e)
@@ -792,7 +792,7 @@ class HermesManager:
         job.step("check", "run")
         ok = self.auth_ok()
         if not ok:
-            raise SetupError("Hermes is running but doesn't accept MODI's key" if ok is False else "Hermes started but isn't answering yet. Wait a moment and press Fix it again.", "auth" if ok is False else "start")
+            raise SetupError("Hermes is running but doesn't accept ATLAS's key" if ok is False else "Hermes started but isn't answering yet. Wait a moment and press Fix it again.", "auth" if ok is False else "start")
         job.step("check", "ok")
         self.adopt_key()
         self.chat_state = ""
@@ -910,7 +910,7 @@ class HermesManager:
                 raise SetupError("Ollama did not start.", "no_ollama")
         if model not in o["models"] and (model + ":latest") not in o["models"]:
             self._ollama_pull(job, model)
-        big = model if model.endswith("-modi") else re.sub(r"[:/]", "-", model) + "-modi"
+        big = model if model.endswith("-atlas") else re.sub(r"[:/]", "-", model) + "-atlas"
         job.add_log("Preparing %s with a larger memory window (Hermes needs 64k)..." % model)
         body = json.dumps({"model": big, "from": model, "parameters": {"num_ctx": 65536}, "stream": False}).encode()
         code, out = self._http("POST", OLLAMA_URL + "/api/create", {"Content-Type": "application/json"}, body, timeout=180)
@@ -952,11 +952,11 @@ class HermesManager:
     def test_chat(self, text="Reply with the single word: ready"):
         key = self.resolve_api_key()
         if not key:
-            return {"ok": False, "kind": "no_key", "error": "MODI has no key for Hermes yet."}
+            return {"ok": False, "kind": "no_key", "error": "ATLAS has no key for Hermes yet."}
         body = json.dumps({"model": self.cfg["hermes"].get("model", "hermes-agent"), "stream": False,
                            "messages": [{"role": "user", "content": text}]}).encode()
         code, out = self._http("POST", self.api_url() + "/v1/chat/completions",
-                               {"Authorization": "Bearer " + key, "Content-Type": "application/json", "X-Hermes-Session-Id": "modi-setup-test"},
+                               {"Authorization": "Bearer " + key, "Content-Type": "application/json", "X-Hermes-Session-Id": "atlas-setup-test"},
                                body, timeout=150)
         return interpret_chat(code, out, key)
 
@@ -966,11 +966,11 @@ def interpret_chat(code, out, key=""):
     if code == 0:
         return {"ok": False, "kind": "unreachable", "error": "Hermes isn't answering."}
     if code == 401:
-        return {"ok": False, "kind": "auth", "error": "Hermes rejected MODI's key."}
+        return {"ok": False, "kind": "auth", "error": "Hermes rejected ATLAS's key."}
     try:
         d = json.loads(out)
     except ValueError:
-        return {"ok": False, "kind": "bad", "error": "Hermes answered with something MODI did not understand (HTTP %s)." % code}
+        return {"ok": False, "kind": "bad", "error": "Hermes answered with something ATLAS did not understand (HTTP %s)." % code}
     h = d.get("hermes") or {}
     ch = (d.get("choices") or [{}])[0]
     if code >= 400 or h.get("failed") or ch.get("finish_reason") == "error":

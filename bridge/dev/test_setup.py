@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Unit tests for bridge/modi_hermes.py (no Hermes needed).   python bridge/dev/test_setup.py"""
+"""Unit tests for bridge/atlas_hermes.py (no Hermes needed).   python bridge/dev/test_setup.py"""
 import json, os, sys, tempfile
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import modi_hermes as m
+import atlas_hermes as m
 
 fails = []
 def check(name, cond):
@@ -18,11 +18,11 @@ env = tmp / ".env"
 env.write_text("# my settings\nOPENROUTER_API_KEY=abc12345\nexport API_SERVER_ENABLED=false\nAPI_SERVER_KEY=old\r\nAPI_SERVER_KEY=dup\nFOO=\"bar baz\"\n", encoding="utf-8")
 d = m.read_env_file(env)
 check("parse: export + quotes + last wins", d["API_SERVER_ENABLED"] == "false" and d["FOO"] == "bar baz" and d["API_SERVER_KEY"] == "dup")
-m.set_env_values(env, {"API_SERVER_KEY": "modi-0123456789abcdef", "API_SERVER_ENABLED": "true", "NEW_ONE": "x1234567"})
+m.set_env_values(env, {"API_SERVER_KEY": "atlas-0123456789abcdef", "API_SERVER_ENABLED": "true", "NEW_ONE": "x1234567"})
 d = m.read_env_file(env); txt = env.read_text()
-check("write: values set, other lines untouched", d["API_SERVER_KEY"] == "modi-0123456789abcdef" and d["API_SERVER_ENABLED"] == "true" and d["OPENROUTER_API_KEY"] == "abc12345" and "# my settings" in txt and d["NEW_ONE"] == "x1234567")
+check("write: values set, other lines untouched", d["API_SERVER_KEY"] == "atlas-0123456789abcdef" and d["API_SERVER_ENABLED"] == "true" and d["OPENROUTER_API_KEY"] == "abc12345" and "# my settings" in txt and d["NEW_ONE"] == "x1234567")
 check("write: duplicates collapsed", txt.count("API_SERVER_KEY=") == 1)
-check("write: backup kept", len(list(tmp.glob(".env.modi-backup-*"))) == 1)
+check("write: backup kept", len(list(tmp.glob(".env.atlas-backup-*"))) == 1)
 if os.name != "nt":
     check("write: owner-only permissions", (env.stat().st_mode & 0o077) == 0)
 for bad in ("a\nB=1", "has space", "q'uote", ""):
@@ -33,18 +33,18 @@ try: m.set_env_values(env, {"bad name": "abcdefgh"}); ok = False
 except ValueError: ok = True
 check("write: refuses bad variable name", ok)
 fresh = tmp / "sub" / ".env"
-m.set_env_values(fresh, {"API_SERVER_KEY": "modi-aaaaaaaaaaaaaaaa"})
-check("write: creates new file (and folder), no backup needed", fresh.exists() and not list(fresh.parent.glob("*.modi-backup-*")))
+m.set_env_values(fresh, {"API_SERVER_KEY": "atlas-aaaaaaaaaaaaaaaa"})
+check("write: creates new file (and folder), no backup needed", fresh.exists() and not list(fresh.parent.glob("*.atlas-backup-*")))
 for i in range(8):
-    m.set_env_values(env, {"API_SERVER_KEY": "modi-%016d" % i})
-check("write: backups pruned to 5", len(list(tmp.glob(".env.modi-backup-*"))) <= 5)
+    m.set_env_values(env, {"API_SERVER_KEY": "atlas-%016d" % i})
+check("write: backups pruned to 5", len(list(tmp.glob(".env.atlas-backup-*"))) <= 5)
 # --- yaml
 y = "model:\n  default: x # c\n  provider: \"custom\"\ngateway:\n  other: 1\n  api_server:\n    enabled: true\n    key: 'my-secret-key-123'  # hi\n    port: 8642\napi_server:\n  key: top-level-key-1\n"
 check("yaml: nested key", m.yaml_lookup(y, ["gateway", "api_server", "key"]) == "my-secret-key-123")
 check("yaml: top-level alt", m.yaml_lookup(y, ["api_server", "key"]) == "top-level-key-1")
 check("yaml: model block", m.yaml_lookup(y, ["model", "provider"]) == "custom" and m.yaml_lookup(y, ["model", "default"]) == "x")
 check("yaml: absent", m.yaml_lookup(y, ["gateway", "api_server", "nope"]) is None)
-check("valid_key", m.valid_key("modi-abcdef0123") and not m.valid_key("change-me-local-dev") and not m.valid_key("") and not m.valid_key("short"))
+check("valid_key", m.valid_key("atlas-abcdef0123") and not m.valid_key("change-me-local-dev") and not m.valid_key("") and not m.valid_key("short"))
 # --- key resolution order
 home = tmp / "hh"; home.mkdir()
 os.environ["HERMES_HOME"] = str(home); os.environ.pop("API_SERVER_KEY", None)
@@ -73,7 +73,7 @@ check("api_url follows Hermes' port", mg.api_url() == "http://127.0.0.1:9999")
 (home / ".env").write_text("OPENROUTER_API_KEY=keep12345\n"); mg.saved_key_file.unlink()
 ch = mg.ensure_key_and_api(); k1, _ = mg.live_key()
 check("ensure: creates key + enables API", ch == {"key", "enabled"} and len(k1) >= 32 and mg.api_enabled())
-check("ensure: keeps other settings, backs up", "OPENROUTER_API_KEY=keep12345" in (home / ".env").read_text() and list(home.glob(".env.modi-backup-*")))
+check("ensure: keeps other settings, backs up", "OPENROUTER_API_KEY=keep12345" in (home / ".env").read_text() and list(home.glob(".env.atlas-backup-*")))
 check("ensure: second call changes nothing", mg.ensure_key_and_api() == set() and mg.live_key()[0] == k1)
 # --- redaction
 check("redact", "SECRETVALUE1" not in m.redact("x SECRETVALUE1 y Bearer abcdef123456", ["SECRETVALUE1"]) and "abcdef123456" not in m.redact("Authorization: Bearer abcdef123456"))

@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>MODI</title>
-<link rel="icon" type="image/png" href="/modi.png">
+<title>ATLAS</title>
+<link rel="icon" type="image/png" href="/atlas.png">
 <link rel="shortcut icon" href="/favicon.ico">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
@@ -399,9 +399,9 @@ body.wake-flash #orb{filter:drop-shadow(0 0 26px var(--c)) brightness(1.2)}
 
 <div class="hud">
   <header class="top">
-    <div><b class="aname">MODI</b> &nbsp;//&nbsp; Personal Command Interface</div>
+    <div><b class="aname">ATLAS</b> &nbsp;//&nbsp; Personal Command Interface</div>
     <div class="mid"><span id="bridgechip" title="Local bridge → Hermes"><span class="dot warn" id="bdot"></span><span id="btxt">Bridge: checking…</span></span><span id="loc">Local</span></div>
-    <div><button class="updbtn" id="updbtn" hidden title="A new version of MODI is available">⬆ Update</button><span class="aname">MODI</span> &nbsp;·&nbsp; <b id="topclock">--:--:--</b><button class="pwr" id="pwr" title="Quit (stops the bridge)" aria-label="Quit"><svg viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.8a8 8 0 1 0 11.4 0"/></svg></button></div>
+    <div><button class="updbtn" id="updbtn" hidden title="A new version of ATLAS is available">⬆ Update</button><span class="aname">ATLAS</span> &nbsp;·&nbsp; <b id="topclock">--:--:--</b><button class="pwr" id="pwr" title="Quit (stops the bridge)" aria-label="Quit"><svg viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.8a8 8 0 1 0 11.4 0"/></svg></button></div>
   </header>
 
   <!-- LEFT -->
@@ -453,7 +453,7 @@ body.wake-flash #orb{filter:drop-shadow(0 0 26px var(--c)) brightness(1.2)}
       <div class="lab cst" id="camst">Ask in the bar below, then press Look</div></div>
     <div class="orbwrap"><canvas id="orb" tabindex="0" aria-label="Voice orb – click to listen"></canvas></div>
     <div class="state" id="state">Connecting…</div>
-    <div class="caption dimmed" id="caption" title="Open conversation"><b class="aname">MODI</b>Say something, or type below.</div>
+    <div class="caption dimmed" id="caption" title="Open conversation"><b class="aname">ATLAS</b>Say something, or type below.</div>
     <div class="ctrl">
       <button class="rb cam" id="cam" aria-label="Camera" title="Camera on/off"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="nc">CAMERA BLOCKED</span></button>
       <button class="rb big" id="mic2" aria-label="Microphone – toggle listening" title="Mic – toggle listening (Space)"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
@@ -492,23 +492,23 @@ body.wake-flash #orb{filter:drop-shadow(0 0 26px var(--c)) brightness(1.2)}
     <nav class="dock" id="dock"><button class="dk" data-m="system" aria-label="System"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span>System</span></button><button class="dk" data-m="weather" aria-label="Weather"><svg viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1A3.5 3.5 0 0 0 7 18z"/></svg><span>Weather</span></button><button class="dk" data-m="football" aria-label="Sports"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8l3.5 2.5-1.3 4h-4.4l-1.3-4z"/><path d="M12 3v5M20 10l-4.5.5M17 19l-2.8-4.5M7 19l2.8-4.5M4 10l4.5.5"/></svg><span>Sports</span></button><div class="dsep"></div><button class="dk" data-m="news" aria-label="News"><svg viewBox="0 0 24 24"><path d="M5 5h11v14H7a2 2 0 0 1-2-2z"/><path d="M16 9h3v8a2 2 0 0 1-2 2M8 9h5M8 13h5"/></svg><span>News</span></button><button class="dk" data-m="notes" aria-label="Notes"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg><span>Notes</span></button><button class="dk" data-m="focus" aria-label="Focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg><span>Focus</span></button><button class="dk" data-m="chat" aria-label="Chat"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H10l-5 4v-4H4z"/></svg><span>Chat</span></button><button class="dk" data-m="log" aria-label="Log"><svg viewBox="0 0 24 24"><path d="M4 6l5 5-5 5M12 18h8"/></svg><span>Log</span></button><button class="dk" data-m="settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg><span>Settings</span></button></nav>
     <div class="cmd">
       <span class="pr">&gt;_</span>
-      <input type="text" id="cmdin" placeholder="Talk to MODI…" disabled aria-label="Message MODI" autocomplete="off">
+      <input type="text" id="cmdin" placeholder="Talk to ATLAS…" disabled aria-label="Message ATLAS" autocomplete="off">
       <span class="note" id="cmdnote">Bridge offline</span>
       <div class="mic" id="mic" title="Toggle listening"><svg viewBox="0 0 24 24" fill="none" stroke="#35e0ff" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
     </div>
   </div>
 </div>
 
-<div class="stopped" id="stopped"><div><span class="aname">MODI</span> has stopped<br><span style="color:var(--dim);font-size:.7em">Close this window · relaunch from the MODI shortcut</span></div></div>
+<div class="stopped" id="stopped"><div><span class="aname">ATLAS</span> has stopped<br><span style="color:var(--dim);font-size:.7em">Close this window · relaunch from the ATLAS shortcut</span></div></div>
 <div class="setup" id="setup"><div class="box" id="setupbox"></div></div>
 <div class="cfm" id="cfm"><div class="box"><h4 id="cfmt">CONFIRM ACTION</h4><p id="cfmp"></p><div class="row"><button class="btn" id="cfmno">Cancel</button><button class="btn sel" id="cfmyes">Allow</button></div></div></div>
 <div class="ov" id="ov" role="dialog" aria-modal="false"><div class="oh"><span id="ovt">Module</span><button class="x" id="ovx" aria-label="Close">✕</button></div><div class="ob" id="ovb"></div></div>
 <script>
 (function(){
 let TZ=(Intl.DateTimeFormat().resolvedOptions().timeZone)||'UTC';
-let ANAME="MODI";const an=()=>ANAME;
+let ANAME="ATLAS";const an=()=>ANAME;
 function applyAssistant(a){
-  const n=(a&&a.name)||"MODI";if(n===ANAME&&document.title===n)return;ANAME=n;document.title=n;
+  const n=(a&&a.name)||"ATLAS";if(n===ANAME&&document.title===n)return;ANAME=n;document.title=n;
   document.querySelectorAll(".aname").forEach(e=>e.textContent=n);
   const ph=BR.online?"Talk to "+n+"…":null;if(typeof cmdin!=="undefined"&&cmdin&&BR.online){cmdin.placeholder=ph;cmdin.setAttribute("aria-label","Message "+n)}
   if(typeof setOrb==="function"&&typeof orbMode!=="undefined")setOrb(orbMode);
@@ -822,7 +822,7 @@ const ov=document.getElementById('ov'),ovb=document.getElementById('ovb'),ovt=do
 let active=null,tmrTick=null;
 const TILE={system:'t-system',weather:'t-weather',football:'t-football'};
 const ICOLAB={news:'News',notes:'Notes',focus:'Focus timer',chat:'Chat',log:'Event log',settings:'Settings',update:'Update'};
-const PANELS={};   /* feature panels: MODI.register(id,{title,render(el)}) */
+const PANELS={};   /* feature panels: ATLAS.register(id,{title,render(el)}) */
 function renderLog(){const el=document.getElementById('loglist');if(!el)return;
   el.innerHTML=LOG.slice().reverse().map(e=>`<div><span class="ts">${e.t}</span><span>${e.m}</span></div>`).join('')}
 /* focus timer state lives outside the overlay so it keeps running */
@@ -919,9 +919,9 @@ const post=(p,o)=>api(p,{method:'POST',headers:{'Content-Type':'application/json
 const STATES={idle:['Standing by','All systems nominal'],listening:['Listening…','Voice channel open'],transcribing:['Transcribing…','Processing speech'],
   thinking:['Thinking…',()=>an()+' is working'],speaking:['Speaking…',()=>an()+' is speaking']};
 function setOrb(m){
-  orbMode=m;document.body.dataset.orb=m;if(window.MODI&&MODI.dispatch)MODI.dispatch({type:'orb',mode:m});
+  orbMode=m;document.body.dataset.orb=m;if(window.ATLAS&&ATLAS.dispatch)ATLAS.dispatch({type:'orb',mode:m});
   let [a,b]=STATES[m];if(typeof b==='function')b=b();
-  if(m==='idle'&&!BR.online){a='Bridge offline';b='Launch MODI to connect'}
+  if(m==='idle'&&!BR.online){a='Bridge offline';b='Launch ATLAS to connect'}
   stateEl.textContent=a;document.getElementById('greetsub').textContent=b;
   stateEl.style.color=(m==='idle'&&!BR.online)?'var(--warn)':'';
   document.getElementById('mic2').classList.toggle('on',m==='listening');
@@ -981,7 +981,7 @@ document.getElementById('spk').classList.toggle('sel',speakOn);
 /* ---- ask Hermes (text) ---- */
 async function askHermes(text,opt){
   opt=opt||{};
-  if(!BR.online){setCaption('BRIDGE','Bridge offline — launch MODI (shortcut / app) on this computer.',true);return}
+  if(!BR.online){setCaption('BRIDGE','Bridge offline — launch ATLAS (shortcut / app) on this computer.',true);return}
   stopSpeaking();
   addMsg('user',text);setCaption('YOU',text);log('You: '+text.slice(0,60));
   setOrb('thinking');
@@ -1003,7 +1003,7 @@ function voiceToggle(){
   if(orbMode==='idle')return voiceStart();
 }
 async function voiceStart(){
-  if(!BR.online){setCaption('BRIDGE','Bridge offline — launch MODI (shortcut / app) on this computer.',true);log('Mic pressed · bridge offline');return}
+  if(!BR.online){setCaption('BRIDGE','Bridge offline — launch ATLAS (shortcut / app) on this computer.',true);log('Mic pressed · bridge offline');return}
   if(!navigator.mediaDevices||!window.MediaRecorder){setCaption('MIC','This browser cannot record audio.',true);return}
   try{REC.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}
   catch(e){setCaption('MIC','Microphone blocked — allow it in the browser address bar.',true);log('Microphone blocked');return}
@@ -1055,7 +1055,7 @@ async function onRecStop(){
     if(!t){setOrb('idle');setCaption(an(),"I didn't catch that — try again.");cap.classList.add('dimmed');return}
     if(REC.wake){                     /* started by the wake word: drop the phrase itself if it leaked into the recording */
       REC.wake=false;const rest=stripWake(t);
-      if(!rest){log('Only the wake phrase was heard · listening again');setOrb('idle');MODI.listen();return}
+      if(!rest){log('Only the wake phrase was heard · listening again');setOrb('idle');ATLAS.listen();return}
       t=rest}
     await askHermes(t,{speak:true});
   }catch(e){setOrb('idle');setCaption('ERROR',e.message,true);log('Speech-to-text error · '+e.message.slice(0,60))}
@@ -1082,7 +1082,7 @@ function grab(maxW,q){
   c.getContext('2d').drawImage(camV,0,0,c.width,c.height);return c.toDataURL('image/jpeg',q);
 }
 async function look(){
-  if(!camStream||!BR.online){setCaption('BRIDGE',BR.online?'Turn the camera on first.':'Bridge offline — launch MODI (shortcut / app) on this computer.',true);return}
+  if(!camStream||!BR.online){setCaption('BRIDGE',BR.online?'Turn the camera on first.':'Bridge offline — launch ATLAS (shortcut / app) on this computer.',true);return}
   const img=grab(1024,.85);if(!img){camSt.textContent='Camera not ready yet…';return}
   const q=(cmdin.value||'').trim();cmdin.value='';
   stopSpeaking();
@@ -1125,7 +1125,7 @@ function applyHealth(h){
   }
   if(!h){bdot.className='dot err';btxt.textContent=isHttp?'Bridge offline':'Bridge offline · open via bridge';
     pttTag.textContent='Bridge offline';pttTag.className='tag off';
-    cmdin.disabled=true;cmdin.placeholder='Bridge offline — launch MODI';cmdnote.textContent='Bridge offline';cmdnote.style.color='var(--warn)';
+    cmdin.disabled=true;cmdin.placeholder='Bridge offline — launch ATLAS';cmdnote.textContent='Bridge offline';cmdnote.style.color='var(--warn)';
     document.getElementById('hmtag').textContent='Bridge offline';document.getElementById('hmtag').className='tag off';
     SYS=null;setSystemExample();
   }else{
@@ -1179,12 +1179,12 @@ async function loadHistory(){
 }
 
 /* =====================================================================
-   MODI feature plumbing: settings toggles, event stream, plug-in API
+   ATLAS feature plumbing: settings toggles, event stream, plug-in API
    ===================================================================== */
-const MODI_EVT={};let FEATS=[];
-const MODI={
-  on(type,fn){(MODI_EVT[type]=MODI_EVT[type]||[]).push(fn)},
-  dispatch(msg){(MODI_EVT[msg.type]||[]).forEach(f=>{try{f(msg)}catch(e){console.error(e)}})},
+const ATLAS_EVT={};let FEATS=[];
+const ATLAS={
+  on(type,fn){(ATLAS_EVT[type]=ATLAS_EVT[type]||[]).push(fn)},
+  dispatch(msg){(ATLAS_EVT[msg.type]||[]).forEach(f=>{try{f(msg)}catch(e){console.error(e)}})},
   speak:(t)=>speak(t),ask:(t,o)=>askHermes(t,o),log:(m)=>log(m),post,api,setOrb,
   orb:()=>orbMode,
   listen(o){if(orbMode==='speaking')stopSpeaking();if(orbMode==='idle'||orbMode==='speaking'){REC.nextWake=!!(o&&o.wake);return voiceStart()}},
@@ -1196,11 +1196,11 @@ const MODI={
       b.innerHTML='<svg viewBox="0 0 24 24">'+(def.icon||'<circle cx="12" cy="12" r="8"/>')+'</svg><span>'+esc(def.title||id)+'</span>';
       b.addEventListener('click',()=>openMod(id));document.getElementById('dock').appendChild(b)}},
 };
-window.MODI=MODI;
-MODI.on('say',m=>{addMsg('assistant',m.text,{kind:'feature'});setCaption(an(),m.text);speak(m.text)});
-MODI.on('notify',m=>{log(m.text);setCaption('',m.text,m.level==='error')});
-MODI.on('features',m=>{FEATS=m.features;if(ovMode==='settings')renderSettings();loadFeatureUi()});
-MODI.on('confirm',m=>{
+window.ATLAS=ATLAS;window.MODI=ATLAS;/* legacy-modi: third-party modules written for the old name keep working */
+ATLAS.on('say',m=>{addMsg('assistant',m.text,{kind:'feature'});setCaption(an(),m.text);speak(m.text)});
+ATLAS.on('notify',m=>{log(m.text);setCaption('',m.text,m.level==='error')});
+ATLAS.on('features',m=>{FEATS=m.features;if(ovMode==='settings')renderSettings();loadFeatureUi()});
+ATLAS.on('confirm',m=>{
   const el=document.getElementById('cfm');document.getElementById('cfmp').textContent=m.prompt+(m.detail?'\n'+m.detail:'');
   document.getElementById('cfmp').style.whiteSpace='pre-wrap';el.classList.add('open');
   const done=ok=>{el.classList.remove('open');post('/api/confirm',{id:m.id,ok}).catch(()=>{});log('Action '+(ok?'allowed':'declined')+' · '+m.prompt)};
@@ -1226,7 +1226,7 @@ function renderUpdate(){
   h+='<span class="lab" style="cursor:pointer" id="updauto">Automatic checks: <b>'+(u.enabled?'on':'off')+'</b> (click to toggle)</span></div>';
   if(u.installing)h+='<div class="msg'+(u.installing==='error'?' bad':'')+'">'+esc(u.install_message||u.installing)+'</div>';
   else if(updMsg)h+='<div class="msg bad">'+esc(updMsg)+'</div>';
-  if(u.available)h+='<div class="msg">The installer is downloaded from the project\'s GitHub release, its SHA-256 is verified, your settings are kept, and MODI restarts by itself.</div>';
+  if(u.available)h+='<div class="msg">The installer is downloaded from the project\'s GitHub release, its SHA-256 is verified, your settings are kept, and ATLAS restarts by itself.</div>';
   ovb.innerHTML=h+'</div>';
   const go=document.getElementById('updgo');if(go)go.onclick=async()=>{updMsg='';updBusy=true;renderUpdate();
     try{await post('/api/update/install',{});watchRestart()}catch(e){updBusy=false;updMsg=e.message;renderUpdate()}};
@@ -1234,19 +1234,19 @@ function renderUpdate(){
   document.getElementById('updauto').onclick=async()=>{try{UPD=await post('/api/update/settings',{enabled:!u.enabled})}catch(e){updMsg=e.message}renderUpdBtn();renderUpdate()};
 }
 function watchRestart(){
-  const from=UPD&&UPD.current,t0=Date.now();log('Updating MODI from v'+from);
+  const from=UPD&&UPD.current,t0=Date.now();log('Updating ATLAS from v'+from);
   const iv=setInterval(async()=>{
     try{const r=await fetch('/api/health',{cache:'no-store'});if(r.ok){const j=await r.json();if(j.version&&j.version!==from){clearInterval(iv);location.reload();return}}}catch(e){}
-    if(Date.now()-t0>300000){clearInterval(iv);updBusy=false;updMsg='The update did not finish. Open MODI again from its shortcut; see the update log in the MODI data folder.';renderUpdate()}
+    if(Date.now()-t0>300000){clearInterval(iv);updBusy=false;updMsg='The update did not finish. Open ATLAS again from its shortcut; see the update log in the ATLAS data folder.';renderUpdate()}
   },1500);
 }
 async function loadUpdate(){try{UPD=await api('/api/update');renderUpdBtn();renderUpdate()}catch(e){}}
-MODI.on('update',m=>{UPD=Object.assign({ok:true},m.state);renderUpdBtn();renderUpdate()});
+ATLAS.on('update',m=>{UPD=Object.assign({ok:true},m.state);renderUpdBtn();renderUpdate()});
 let es=null;
 function startEvents(){
   if(es||!isHttp)return;
   es=new EventSource('/api/events');
-  es.onmessage=e=>{try{MODI.dispatch(JSON.parse(e.data))}catch(err){}};
+  es.onmessage=e=>{try{ATLAS.dispatch(JSON.parse(e.data))}catch(err){}};
   es.onerror=()=>{if(es&&es.readyState===2){es=null;setTimeout(startEvents,4000)}};
 }
 const loadedUi={};
@@ -1299,7 +1299,7 @@ function drawSportsEditor(){
 function renderProfileTab(){
   if(!ED)ED={sports:JSON.parse(JSON.stringify(PROF.sports||[]))};
   const body=document.getElementById('settab');
-  body.innerHTML='<div class="prof"><label for="pf-aname">Assistant</label><input id="pf-aname" maxlength="20" placeholder="MODI" value="'+esc(ANAME)+'" title="What you call your assistant (1-20 characters). Wake word: Hey ‹name›"><label for="pf-name">Your name</label><input id="pf-name" maxlength="40" placeholder="What should '+esc(ANAME)+' call you?" value="'+esc(PROF.name||'')+'"><label for="pf-city">City</label><input id="pf-city" maxlength="80" placeholder="e.g. Austin, Texas (for weather)" value="'+esc(PROF.label||PROF.city||'')+'"><label>Sports</label><div id="pf-sports"></div><div class="prow"><button class="btn sel" id="pf-save">Save profile</button><span class="msg" id="pf-msg"></span></div><div class="cands" id="pf-cands"></div></div>';
+  body.innerHTML='<div class="prof"><label for="pf-aname">Assistant</label><input id="pf-aname" maxlength="20" placeholder="ATLAS" value="'+esc(ANAME)+'" title="What you call your assistant (1-20 characters). Wake word: Hey ‹name›"><label for="pf-name">Your name</label><input id="pf-name" maxlength="40" placeholder="What should '+esc(ANAME)+' call you?" value="'+esc(PROF.name||'')+'"><label for="pf-city">City</label><input id="pf-city" maxlength="80" placeholder="e.g. Austin, Texas (for weather)" value="'+esc(PROF.label||PROF.city||'')+'"><label>Sports</label><div id="pf-sports"></div><div class="prow"><button class="btn sel" id="pf-save">Save profile</button><span class="msg" id="pf-msg"></span></div><div class="cands" id="pf-cands"></div></div>';
   drawSportsEditor();
   const pfSave=async(extra)=>{const m=document.getElementById('pf-msg');m.className='msg';m.textContent='Saving…';
     document.querySelectorAll('#pf-sports input').forEach(i=>i.dispatchEvent(new Event('blur')));
@@ -1336,7 +1336,7 @@ function renderSettings(fresh){
   if(fresh){ED=null}
   if(!fresh&&ovb.contains(document.activeElement)&&document.activeElement.tagName==='INPUT')return;   /* don't wipe what the user is typing */
   if(!fresh&&setTab==='profile'&&document.getElementById('settab'))return;                           /* profile tab only redraws on open/save */
-  ovb.innerHTML='<div class="tabs"><button class="tab'+(setTab==='profile'?' sel':'')+'" data-tab="profile">Profile</button><button class="tab'+(setTab==='features'?' sel':'')+'" data-tab="features">Features</button><button class="tab'+(setTab==='ai'?' sel':'')+'" data-tab="ai">AI connection</button></div><div id="settab"></div><div class="foot"><span class="lab">Saved on this computer</span><span class="lab" id="setupd" style="cursor:pointer;text-decoration:underline">MODI v'+esc((BR.health&&BR.health.version)||'?')+' · Updates</span></div>';
+  ovb.innerHTML='<div class="tabs"><button class="tab'+(setTab==='profile'?' sel':'')+'" data-tab="profile">Profile</button><button class="tab'+(setTab==='features'?' sel':'')+'" data-tab="features">Features</button><button class="tab'+(setTab==='ai'?' sel':'')+'" data-tab="ai">AI connection</button></div><div id="settab"></div><div class="foot"><span class="lab">Saved on this computer</span><span class="lab" id="setupd" style="cursor:pointer;text-decoration:underline">ATLAS v'+esc((BR.health&&BR.health.version)||'?')+' · Updates</span></div>';
   ovb.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{setTab=b.dataset.tab;renderSettings(true)});
   const su=document.getElementById('setupd');if(su)su.onclick=()=>openMod('update');
   if(setTab==='profile')renderProfileTab();else if(setTab==='ai')renderAiTab();else renderFeaturesTab();
@@ -1417,7 +1417,7 @@ function suJobExtras(jb){
 }
 function suProviderForm(){
   const id=SU.sel,st=SU.st||{};
-  if(!id)return '<p class="sub">Pick the AI you already pay for or want to use. MODI never sees your password: sign-in happens in your browser or is stored by Hermes on this computer only.</p>';
+  if(!id)return '<p class="sub">Pick the AI you already pay for or want to use. ATLAS never sees your password: sign-in happens in your browser or is stored by Hermes on this computer only.</p>';
   const adv='<details><summary>Advanced</summary><div class="row"><input type="text" id="sumodel" placeholder="Model name (leave empty for the usual choice)" autocomplete="off" spellcheck="false"></div></details>';
   const keyrow=(ph,lnk)=>'<div class="row"><input type="password" id="sukey" placeholder="'+ph+'" autocomplete="off" spellcheck="false"></div><div class="sub" style="margin:.6vh 0 0">'+lnk+' The key is saved only in Hermes\' settings on this computer.</div>';
   if(id==='chatgpt')return '<p>A browser window opens so you can sign in to ChatGPT. Uses your ChatGPT subscription.</p><div class="row"><button class="btn sel" data-su="connect">Sign in with ChatGPT</button></div>'+adv;
@@ -1499,7 +1499,7 @@ function renderAiTab(){
   await pollHealth();setOrb('idle');if(BR.online){loadHistory();loadFeatures();startEvents();loadUpdate();setInterval(loadUpdate,600000)}
   setInterval(pollHealth,4000);setInterval(pollSystem,2000);pollSystem();
 })();
-window.__hud={openSetup,SU,MODI,openMod,FT,ftUpdate,askHermes,look,voiceToggle};
+window.__hud={openSetup,SU,ATLAS,openMod,FT,ftUpdate,askHermes,look,voiceToggle};
 })();
 </script>
 </body>

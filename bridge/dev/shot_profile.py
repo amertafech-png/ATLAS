@@ -1,4 +1,4 @@
-"""Personalization e2e: no-city state, then name/city/teams via the Settings panel. Needs bridge on :8765 with an empty MODI_HOME."""
+"""Personalization e2e: no-city state, then name/city/teams via the Settings panel. Needs bridge on :8765 with an empty ATLAS_HOME."""
 import asyncio, sys
 from playwright.async_api import async_playwright
 async def main():

@@ -1,4 +1,4 @@
-"""Wake word: say "Hey <assistant name>" (default "Hey MODI") and MODI starts listening - fully local, no account, no API key.
+"""Wake word: say "Hey <assistant name>" (default "Hey ATLAS") and ATLAS starts listening - fully local, no account, no API key.
 
 How it works
   * The HUD window opens the microphone (the browser asks permission and shows its own mic indicator), cuts the audio
@@ -12,7 +12,7 @@ How it works
     starts the normal listen -> /api/listen -> chat -> speak flow.
 
 HTTP (all under /api/m/wake_word/):  GET status | POST mute {muted} | POST aliases {aliases:[...]} | POST retry | GET ws
-Environment: MODI_WAKE_MODEL=<folder of an already-downloaded Vosk model> skips the download (used by tests / offline installs).
+Environment: ATLAS_WAKE_MODEL=<folder of an already-downloaded Vosk model> skips the download (used by tests / offline installs).
 """
 import asyncio
 import difflib
@@ -38,7 +38,7 @@ META = {
     "description": "Say \"Hey <name>\" to start talking, hands-free. Runs fully on this computer (Vosk, no account or key). "
                    "The HUD keeps your microphone open while it is armed and only processes short bursts of speech; "
                    "nothing is recorded or sent anywhere. First use downloads a ~41 MB offline speech model.",
-    "consent": "Turn on the wake word?\n\nMODI will keep your microphone open while this window is open so it can hear "
+    "consent": "Turn on the wake word?\n\nATLAS will keep your microphone open while this window is open so it can hear "
                "\"Hey <name>\". Audio is analysed on this computer only, never saved or sent anywhere, and your browser "
                "shows its microphone indicator while it is armed. You can mute it any time. The first time, a ~41 MB "
                "offline speech model is downloaded.",
@@ -149,7 +149,7 @@ class Spotter:
 
 # ------------------------------------------------------------------ model download
 def model_dir(ctx):
-    env = os.environ.get("MODI_WAKE_MODEL")
+    env = os.environ.get("ATLAS_WAKE_MODEL")
     return Path(env) if env else ctx.data_dir / "model" / MODEL_NAME
 
 
@@ -164,7 +164,7 @@ def download_model(dest, progress, cancelled):
     tmp = dest.parent / (MODEL_NAME + ".part")
     zpath = dest.parent / (MODEL_NAME + ".zip.part")
     shutil.rmtree(tmp, ignore_errors=True)
-    req = urllib.request.Request(MODEL_URL, headers={"User-Agent": "MODI-wake-word"})
+    req = urllib.request.Request(MODEL_URL, headers={"User-Agent": "ATLAS-wake-word"})
     h = hashlib.sha256()
     with urllib.request.urlopen(req, timeout=30) as r, open(zpath, "wb") as f:
         total = int(r.headers.get("Content-Length") or MODEL_MB * 1024 * 1024)

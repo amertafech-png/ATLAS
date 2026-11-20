@@ -1,24 +1,26 @@
-"""Build the MODI release assets into dist/ :
-   MODI-Setup.bat (Windows), MODI-Setup.command (macOS), SHA256SUMS, RELEASE-NOTES-v<version>.md (template)
-Version + repo come from bridge/modi_meta.py.  See RELEASING.md."""
-import base64, hashlib, io, os, re, sys, tarfile, zipfile
+"""Build the ATLAS release assets into dist/ :
+   ATLAS-Setup.bat (Windows), ATLAS-Setup.command (macOS), SHA256SUMS, RELEASE-NOTES-v<version>.md (template)
+Version + repo come from bridge/atlas_meta.py.  See RELEASING.md."""
+import base64, hashlib, io, os, re, shutil, sys, tarfile, zipfile
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(ROOT, 'bridge'))
-import modi_meta
+import atlas_meta
 SRC = os.path.join(ROOT, 'src'); DIST = os.path.join(ROOT, 'dist'); os.makedirs(DIST, exist_ok=True)
 
 FILES = {  # archive path -> source path
     'index.html': 'index.html',
-    'assets/modi.ico': 'assets/modi.ico', 'assets/modi.png': 'assets/modi.png', 'assets/modi.icns': 'assets/modi.icns',
+    'assets/atlas.ico': 'assets/atlas.ico', 'assets/atlas.png': 'assets/atlas.png', 'assets/atlas.icns': 'assets/atlas.icns',
     'bridge/bridge.py': 'bridge/bridge.py', 'bridge/config.json': 'bridge/config.json',
     'bridge/requirements.txt': 'bridge/requirements.txt',
-    'bridge/modi_meta.py': 'bridge/modi_meta.py', 'bridge/modi_update.py': 'bridge/modi_update.py',
-    'bridge/modi_features.py': 'bridge/modi_features.py', 'bridge/modules/_example.py': 'bridge/modules/_example.py',
+    'bridge/atlas_meta.py': 'bridge/atlas_meta.py', 'bridge/atlas_update.py': 'bridge/atlas_update.py',
+    'bridge/atlas_features.py': 'bridge/atlas_features.py', 'bridge/atlas_hermes.py': 'bridge/atlas_hermes.py', 'bridge/modules/_example.py': 'bridge/modules/_example.py',
     'bridge/modules/wake_word.py': 'bridge/modules/wake_word.py', 'bridge/modules/wake_word.js': 'bridge/modules/wake_word.js',
-    'win/MODI.ps1': 'src/win/MODI.ps1', 
-    'mac/modi-launch.sh': 'src/mac/modi-launch.sh',
+    'win/ATLAS.ps1': 'src/win/ATLAS.ps1', 
+    'mac/atlas-launch.sh': 'src/mac/atlas-launch.sh',
     'GUIDE.md': 'docs/GUIDE.md', 'LICENSE': 'LICENSE',
 }
+_missing = [f for f in sorted(os.listdir(os.path.join(ROOT, 'bridge'))) if f.endswith('.py') and f'bridge/{f}' not in FILES]
+if _missing: sys.exit('build: bridge modules not listed in FILES (they would be missing from the installers): ' + ', '.join(_missing))
 def data(arc, src):
     b = open(os.path.join(ROOT, src), 'rb').read()
     if arc.startswith('win/'):
@@ -48,50 +50,55 @@ def b64lines(b, n=76):
 # ---- macOS ----
 head = open(os.path.join(SRC, 'mac/installer-head.sh'), 'rb').read().decode().replace('\r\n', '\n')
 cmd = head + b64lines(make_tgz())
-p = os.path.join(DIST, 'MODI-Setup.command'); open(p, 'w', newline='\n').write(cmd); os.chmod(p, 0o755)
+p = os.path.join(DIST, 'ATLAS-Setup.command'); open(p, 'w', newline='\n').write(cmd); os.chmod(p, 0o755)
 
 # ---- Windows ----
 stub = r'''@echo off
-rem MODI-Setup.bat - one-file installer. Double-click. (Windows SmartScreen: More info > Run anyway)
-title MODI Setup
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$t=[IO.File]::ReadAllText('%~f0'); $a=$t.IndexOf('#<<'+'PS1>>'); $b=$t.IndexOf('#<<'+'PAYLOAD>>'); $d=Join-Path $env:TEMP 'modi-setup'; New-Item -ItemType Directory -Force -Path $d | Out-Null; $f=Join-Path $d 'MODI-Setup.ps1'; [IO.File]::WriteAllText($f,$t.Substring($a,$b-$a),(New-Object Text.UTF8Encoding($true))); $pf=Join-Path $d 'payload.b64'; [IO.File]::WriteAllText($pf,$t.Substring($b+12)); $env:MODI_PAYLOAD_FILE=$pf; & $f %*; $c=$LASTEXITCODE; Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue; exit $c"
+rem ATLAS-Setup.bat - one-file installer. Double-click. (Windows SmartScreen: More info > Run anyway)
+title ATLAS Setup
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$t=[IO.File]::ReadAllText('%~f0'); $a=$t.IndexOf('#<<'+'PS1>>'); $b=$t.IndexOf('#<<'+'PAYLOAD>>'); $d=Join-Path $env:TEMP 'atlas-setup'; New-Item -ItemType Directory -Force -Path $d | Out-Null; $f=Join-Path $d 'ATLAS-Setup.ps1'; [IO.File]::WriteAllText($f,$t.Substring($a,$b-$a),(New-Object Text.UTF8Encoding($true))); $pf=Join-Path $d 'payload.b64'; [IO.File]::WriteAllText($pf,$t.Substring($b+12)); $env:ATLAS_PAYLOAD_FILE=$pf; & $f %*; $c=$LASTEXITCODE; Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue; exit $c"
 exit /b %errorlevel%
 '''
 body = open(os.path.join(SRC, 'win/installer-body.ps1'), 'rb').read().decode().replace('\r\n', '\n')
 body.encode('ascii')
 bat = stub.replace('\r\n', '\n') + body.rstrip('\n') + '\n#<<PAYLOAD>>\n' + b64lines(make_zip())
 bat = bat.replace('\n', '\r\n')
-open(os.path.join(DIST, 'MODI-Setup.bat'), 'w', newline='').write(bat)
+open(os.path.join(DIST, 'ATLAS-Setup.bat'), 'w', newline='').write(bat)
 
 # ---- checksums + release notes template ----
-ASSETS = ['MODI-Setup.bat', 'MODI-Setup.command']
-for old in ('MODI-source.zip',):
+ASSETS = ['ATLAS-Setup.bat', 'ATLAS-Setup.command']
+# The v1.1.x updater (still installed on early users' PCs) fetches MODI-Setup.* from this repo: attach byte-identical copies under the old names.   # legacy-modi
+for new, old in zip(ASSETS, (atlas_meta.LEGACY_ASSETS['windows'], atlas_meta.LEGACY_ASSETS['mac'])):   # legacy-modi
+    shutil.copyfile(os.path.join(DIST, new), os.path.join(DIST, old))
+ASSETS += [atlas_meta.LEGACY_ASSETS['windows'], atlas_meta.LEGACY_ASSETS['mac']]   # legacy-modi
+for old in ('ATLAS-source.zip',):
     if os.path.exists(os.path.join(DIST, old)): os.remove(os.path.join(DIST, old))
 sums = ''
 for a in ASSETS:
     h = hashlib.sha256(open(os.path.join(DIST, a), 'rb').read()).hexdigest()
     sums += f'{h}  {a}\n'
-open(os.path.join(DIST, modi_meta.CHECKSUMS_ASSET), 'w', newline='\n').write(sums)
-V, R = modi_meta.VERSION, modi_meta.REPO
+open(os.path.join(DIST, atlas_meta.CHECKSUMS_ASSET), 'w', newline='\n').write(sums)
+V, R = atlas_meta.VERSION, atlas_meta.REPO
 _hl = os.path.join(ROOT, 'docs', 'RELEASE-HIGHLIGHTS.md')   # optional: the "What's new" bullets for this version
 highlights = open(_hl, encoding='utf-8').read().strip() if os.path.exists(_hl) else '- (write the highlights here)'
-notes = f"""## MODI v{V}
+notes = f"""## ATLAS v{V}
 
 ### What's new
 {highlights}
 
 ### Install
-- **Windows 10/11:** download `MODI-Setup.bat` and double-click it. If SmartScreen says "Windows protected your PC": **More info -> Run anyway**.
-- **macOS 11+:** download `MODI-Setup.command`, then right-click it -> **Open** -> **Open** (or run `xattr -d com.apple.quarantine ~/Downloads/MODI-Setup.command`).
-- Already have MODI? Open it - an **Update** button appears in the top bar (or run the new installer again; your settings are kept).
+- **Windows 10/11:** download `ATLAS-Setup.bat` and double-click it. If SmartScreen says "Windows protected your PC": **More info -> Run anyway**.
+- **macOS 11+:** download `ATLAS-Setup.command`, then right-click it -> **Open** -> **Open** (or run `xattr -d com.apple.quarantine ~/Downloads/ATLAS-Setup.command`).
+- Already have ATLAS? Open it - an **Update** button appears in the top bar (or run the new installer again; your settings are kept).
+- `MODI-Setup.bat` / `MODI-Setup.command` are identical copies under ATLAS's old name. They exist only so older installs (v1.1.x, before the rename) can still update themselves. You can ignore them.   <!-- legacy-modi -->
 - You need your own AI account: the installer sets up Hermes Agent and asks you to sign in. See the README.
 
 ### Checksums (SHA-256)
-MODI's updater refuses to install unless these match the downloaded files. They are also in the `{modi_meta.CHECKSUMS_ASSET}` asset.
+ATLAS's updater refuses to install unless these match the downloaded files. They are also in the `{atlas_meta.CHECKSUMS_ASSET}` asset.
 ```
 {sums.rstrip()}
 ```
 """
 open(os.path.join(DIST, f'RELEASE-NOTES-v{V}.md'), 'w', newline='\n').write(notes)
-print(f'MODI v{V}  repo {R}  tag must be v{V}')
+print(f'ATLAS v{V}  repo {R}  tag must be v{V}')
 for f in sorted(os.listdir(DIST)): print(' ', f, os.path.getsize(os.path.join(DIST, f)))

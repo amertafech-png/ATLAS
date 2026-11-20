@@ -1,4 +1,4 @@
-"""Tiny fake Ollama (tags / pull / create / OpenAI-compatible chat) for testing MODI's local-model setup.
+"""Tiny fake Ollama (tags / pull / create / OpenAI-compatible chat) for testing ATLAS's local-model setup.
    python mock_ollama.py [port]   (default 11434)"""
 import asyncio, json, sys
 from aiohttp import web

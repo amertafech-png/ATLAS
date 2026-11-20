@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Something in MODI doesn't work
+about: Something in ATLAS doesn't work
 title: "[bug] "
 labels: bug
 ---
@@ -15,9 +15,9 @@ labels: bug
 
 **Your setup**
 - OS (Windows 10/11, macOS version, Intel/Apple Silicon):
-- MODI version (Settings panel, bottom right):
+- ATLAS version (Settings panel, bottom right):
 - Browser used for the app window (Edge / Chrome / other):
 - Hermes Agent working on its own? (yes/no):
 
 **Logs** (optional - *remove any private info first*; never paste API keys)
-<!-- bridge.log in %LOCALAPPDATA%\MODI\logs or ~/Library/Application Support/MODI/logs -->
+<!-- bridge.log in %LOCALAPPDATA%\ATLAS\logs or ~/Library/Application Support/ATLAS/logs -->

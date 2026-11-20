@@ -41,14 +41,16 @@ HUD_FILE = HERE.parent / "index.html"
 
 def app_data_dir():
     """Per-user data folder: config overrides, conversation state, voices, logs.
-    Windows %LOCALAPPDATA%\\MODI | macOS ~/Library/Application Support/MODI | Linux ~/.local/share/MODI"""
-    if os.getenv("MODI_HOME"):
-        return Path(os.environ["MODI_HOME"])
+    Windows %LOCALAPPDATA%\\ATLAS | macOS ~/Library/Application Support/ATLAS | Linux ~/.local/share/ATLAS"""
+    if os.getenv("ATLAS_HOME"):
+        return Path(os.environ["ATLAS_HOME"])
+    if os.getenv("MODI_HOME"):  # legacy-modi: environment override from before the rename
+        return Path(os.environ["MODI_HOME"])   # legacy-modi
     if os.name == "nt":
-        return Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")) / "MODI"
+        return Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")) / "ATLAS"
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "MODI"
-    return Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "MODI"
+        return Path.home() / "Library" / "Application Support" / "ATLAS"
+    return Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "ATLAS"
 
 
 DATA_DIR = app_data_dir()
@@ -69,14 +71,14 @@ DEFAULTS = {
     "tts": {"engine": "auto", "voice": "en_GB-alan-medium", "length_scale": 1.0, "max_chars": 700,
             "download_if_missing": True, "say_voice": "Daniel", "say_rate": 180},
     "vision": {"default_question": "What do you see? Answer briefly."},
-    "update": {"enabled": True, "repo": "", "check_hours": 12},   # repo "" = modi_meta.REPO
-    "assistant": {"name": "MODI", "wake_phrase": "Hey MODI"},
+    "update": {"enabled": True, "repo": "", "check_hours": 12},   # repo "" = atlas_meta.REPO
+    "assistant": {"name": "ATLAS", "wake_phrase": "Hey ATLAS"},
     "profile": {"name": "", "city": "", "label": "", "lat": None, "lon": None, "timezone": "", "country": "", "units": "metric",
                 "sports": []},   # [{"sport": "Soccer", "leagues": ["Serie A"], "teams": ["Arsenal"]}] - set in HUD Settings or by the installer
     "features": {},   # {"<id>": {"enabled": bool, "settings": {...}}}  - managed from the HUD Settings panel
 }
 
-ASSISTANT_DEFAULT = "MODI"
+ASSISTANT_DEFAULT = "ATLAS"
 
 
 class BadInput(ValueError):
@@ -121,7 +123,29 @@ def deep_merge(base, over):
     return base
 
 
+def migrate_legacy_config():  # legacy-modi
+    """The product used to be called MODI. A user who never renamed the assistant (name still the old default) becomes ATLAS / (legacy-modi)
+    "Hey ATLAS"; a custom name is kept untouched. Runs once on the per-user config file, quietly, on every start (it is a no-op after)."""
+    f = DATA_DIR / "config.json"
+    try:
+        cur = json.loads(f.read_text(encoding="utf-8-sig")) if f.exists() else None
+    except Exception:
+        return
+    if not isinstance(cur, dict) or not isinstance(cur.get("assistant"), dict):
+        return
+    a = cur["assistant"]
+    name, phrase = str(a.get("name") or "").strip(), str(a.get("wake_phrase") or "").strip()
+    if name.lower() == "modi" or (not name and phrase.lower() == "hey modi"):   # legacy-modi
+        cur["assistant"] = {"name": ASSISTANT_DEFAULT, "wake_phrase": "Hey " + ASSISTANT_DEFAULT}
+        try:
+            f.write_text(json.dumps(cur, indent=2), encoding="utf-8")
+            print("[bridge] migrated the default assistant name MODI -> ATLAS", flush=True)   # legacy-modi
+        except OSError:
+            pass
+
+
 def load_config():
+    migrate_legacy_config()
     cfg = copy.deepcopy(DEFAULTS)
     # app-folder config.json first, then the per-user override file (survives app updates)
     for p in (HERE / "config.json", DATA_DIR / "config.json"):
@@ -143,14 +167,14 @@ def load_config():
 
 CFG = load_config()
 
-import modi_features  # noqa: E402  (feature framework, see modi_features.py)
-import modi_hermes  # noqa: E402  (finds / installs / connects Hermes, see modi_hermes.py)
-import modi_meta  # noqa: E402
-import modi_update  # noqa: E402
-VERSION = modi_meta.VERSION
+import atlas_features  # noqa: E402  (feature framework, see atlas_features.py)
+import atlas_hermes  # noqa: E402  (finds / installs / connects Hermes, see atlas_hermes.py)
+import atlas_meta  # noqa: E402
+import atlas_update  # noqa: E402
+VERSION = atlas_meta.VERSION
 
 
-HM = modi_hermes.HermesManager(CFG, DATA_DIR, say=lambda m: print(m, flush=True))
+HM = atlas_hermes.HermesManager(CFG, DATA_DIR, say=lambda m: print(m, flush=True))
 
 
 def hermes_home_candidates():
@@ -158,7 +182,7 @@ def hermes_home_candidates():
 
 
 def resolve_api_key():
-    """MODI config > the key Hermes itself is configured with (.env / config.yaml) > MODI's saved copy."""
+    """ATLAS config > the key Hermes itself is configured with (.env / config.yaml) > ATLAS's saved copy."""
     return HM.resolve_api_key()
 
 
@@ -172,7 +196,7 @@ def geocode(q, count=5):
         return []
     name = q.split(",")[0].strip()
     url = "https://geocoding-api.open-meteo.com/v1/search?" + urllib.parse.urlencode({"name": name, "count": 8, "language": "en", "format": "json"})
-    req = urllib.request.Request(url, headers={"User-Agent": "MODI/" + modi_meta.VERSION})
+    req = urllib.request.Request(url, headers={"User-Agent": "ATLAS/" + atlas_meta.VERSION})
     with urllib.request.urlopen(req, timeout=8) as r:
         data = json.loads(r.read().decode("utf-8"))
     hint = [x.strip().lower() for x in q.split(",")[1:] if x.strip()]
@@ -366,7 +390,7 @@ async def hermes_api(user_content):
     except ClientError:
         HM.invalidate()
         raise HermesError("Can't reach Hermes right now. Press Fix it and I'll start it.", 503, "setup")
-    res = modi_hermes.interpret_chat(code, txt, key)
+    res = atlas_hermes.interpret_chat(code, txt, key)
     if res["ok"]:
         HM.note_chat_ok()
         return res["reply"] or "(Hermes returned an empty reply.)"
@@ -619,7 +643,7 @@ class TTS:
 
     def _say(self, text):
         t = CFG["tts"]
-        fd, out = tempfile.mkstemp(suffix=".wav", prefix="modi-say-")
+        fd, out = tempfile.mkstemp(suffix=".wav", prefix="atlas-say-")
         os.close(fd)
         try:
             cmd = ["say", "-v", t.get("say_voice", "Daniel"), "-r", str(t.get("say_rate", 180)), "-o", out,
@@ -751,15 +775,15 @@ def _asset(name, ctype):
 
 
 async def h_icon(request):
-    return _asset("modi.ico", "image/x-icon")
+    return _asset("atlas.ico", "image/x-icon")
 
 
 async def h_icon_png(request):
-    return _asset("modi.png", "image/png")
+    return _asset("atlas.png", "image/png")
 
 
 async def h_quit(request):
-    """Stop the bridge (used by the HUD power button and Stop-MODI)."""
+    """Stop the bridge (used by the HUD power button and Stop-ATLAS)."""
     print("[bridge] quit requested", flush=True)
 
     def _exit():
@@ -786,7 +810,7 @@ async def h_health(request):
     })
 
 
-# ---- Hermes connection wizard (see modi_hermes.py) -----------------------------------------------------------
+# ---- Hermes connection wizard (see atlas_hermes.py) -----------------------------------------------------------
 async def _body(request):
     try:
         b = await request.json()
@@ -806,7 +830,7 @@ def _job_reply(res):
 
 async def h_setup_status(request):
     st = await _in_thread(HM.status, request.query.get("fresh") == "1")
-    return web.json_response({"ok": True, **st, "providers": [{"id": k, "label": v["label"], "kind": v["kind"]} for k, v in modi_hermes.PROVIDERS.items()]})
+    return web.json_response({"ok": True, **st, "providers": [{"id": k, "label": v["label"], "kind": v["kind"]} for k, v in atlas_hermes.PROVIDERS.items()]})
 
 
 async def h_setup_install(request):
@@ -821,7 +845,7 @@ async def h_setup_provider(request):
     body = await _body(request)
     try:
         return _job_reply(await _in_thread(HM.start_provider, body))
-    except modi_hermes.SetupError as e:
+    except atlas_hermes.SetupError as e:
         return jerr(str(e), 400)
 
 
@@ -829,7 +853,7 @@ async def h_setup_pull(request):
     body = await _body(request)
     try:
         return _job_reply(await _in_thread(HM.start_pull, str(body.get("model") or "")))
-    except modi_hermes.SetupError as e:
+    except atlas_hermes.SetupError as e:
         return jerr(str(e), 400)
 
 
@@ -859,9 +883,9 @@ async def h_setup_test(request):
 
 
 def _hermes_boot():
-    """At bridge start: remember Hermes' key and, if Hermes is installed but idle, start it (so it comes up with MODI)."""
+    """At bridge start: remember Hermes' key and, if Hermes is installed but idle, start it (so it comes up with ATLAS)."""
     try:
-        if os.getenv("MODI_NO_BOOT"):          # tests: don't auto-start Hermes
+        if os.getenv("ATLAS_NO_BOOT"):          # tests: don't auto-start Hermes
             return
         src = HM.adopt_key()
         if src:
@@ -972,7 +996,7 @@ async def h_speak(request):
 
 
 # ---------------------------------------------------------------- feature framework endpoints
-FEATURES = modi_features.Features(HERE, DATA_DIR, CFG, hermes_text, DATA_DIR / "config.json")
+FEATURES = atlas_features.Features(HERE, DATA_DIR, CFG, hermes_text, DATA_DIR / "config.json")
 
 
 async def h_features(request):
@@ -1041,7 +1065,7 @@ async def h_feature_js(request):
 
 
 async def _on_startup(app):
-    threading.Thread(target=_hermes_boot, daemon=True, name="modi-hermes-boot").start()
+    threading.Thread(target=_hermes_boot, daemon=True, name="atlas-hermes-boot").start()
     await FEATURES.start_enabled()
 
 
@@ -1075,7 +1099,7 @@ def _request_exit():
     raise web.GracefulExit()
 
 
-UPDATER = modi_update.Updater(CFG, DATA_DIR, DATA_DIR / "config.json", FEATURES.emit, _request_exit)
+UPDATER = atlas_update.Updater(CFG, DATA_DIR, DATA_DIR / "config.json", FEATURES.emit, _request_exit)
 
 
 async def h_update(request):
@@ -1135,7 +1159,7 @@ def make_app():
     app = web.Application(middlewares=[guard], client_max_size=40 * 1024 * 1024)
     app.add_routes([
         web.get("/", h_index), web.get("/index.html", h_index),
-        web.get("/favicon.ico", h_icon), web.get("/modi.ico", h_icon), web.get("/modi.png", h_icon_png),
+        web.get("/favicon.ico", h_icon), web.get("/atlas.ico", h_icon), web.get("/atlas.png", h_icon_png),
         web.post("/api/quit", h_quit),
         web.get("/api/health", h_health), web.get("/api/system", h_system),
         web.get("/api/history", h_history), web.post("/api/new", h_new),
@@ -1238,7 +1262,7 @@ def main():
         print("[hermes] " + (j["error"] or "not connected"), flush=True)
         sys.exit(1)
     if "--install-deps" in sys.argv:       # pip requirements of the features switched on in Settings (used by the installers)
-        reqs = modi_features.deps_for_enabled(FEATURES)
+        reqs = atlas_features.deps_for_enabled(FEATURES)
         if reqs:
             print("[bridge] installing feature packages:", " ".join(reqs), flush=True)
             sys.exit(subprocess.call([sys.executable, "-m", "pip", "install", "--quiet", *reqs]))
