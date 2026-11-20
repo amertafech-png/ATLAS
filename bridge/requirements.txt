@@ -3,3 +3,4 @@ psutil>=5.9
 faster-whisper>=1.0
 av>=13,<17
 piper-tts>=1.3
+tzdata>=2024.1; platform_system == "Windows"   # IANA time zones for calendars/reminders (Windows has no system copy)

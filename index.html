@@ -13,6 +13,10 @@
   --mono: "Cascadia Code","Cascadia Mono",Consolas,"SF Mono",Menlo,"DejaVu Sans Mono","Liberation Mono",monospace;
   --sans: "Segoe UI","Helvetica Neue",Arial,"Liberation Sans",sans-serif;
 }
+/* skins: the whole HUD is rotated around the colour wheel from the original cyan */
+html[data-skin=ember] body{filter:hue-rotate(-152deg) saturate(1.15)}
+html[data-skin=violet] body{filter:hue-rotate(78deg) saturate(1.05)}
+html[data-skin=emerald] body{filter:hue-rotate(-52deg)}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--c3);font-family:var(--sans)}
 body{
@@ -95,6 +99,44 @@ body{
 .fc .lo{font-family:var(--mono);font-size:clamp(11px,.85vw,16px);color:var(--dim)}
 .fc .bar2{height:3px;margin:.6vh auto;width:70%;background:linear-gradient(90deg,var(--c2),var(--c));box-shadow:0 0 8px var(--c)}
 .panel .h.wrap{flex-wrap:wrap;gap:.6vh .6vw}
+
+/* calendar / brief / reminders panels */
+.ev{display:flex;gap:.7vw;align-items:baseline;font-size:clamp(12px,.92vw,18px);padding:.35vh 0;border-bottom:1px dashed var(--faint)}
+.ev .tm{font-family:var(--mono);color:var(--c);min-width:5.4em;white-space:nowrap;font-size:.92em}
+.ev .ti{flex:1;color:#e6fbff;overflow-wrap:anywhere}.ev .ti small{color:var(--dim);font-size:.85em}
+.ev.cur .tm,.ev.cur .ti{color:var(--ok);text-shadow:0 0 8px var(--ok)}
+.ev.past{opacity:.5}
+.dayh{font-family:var(--mono);font-size:clamp(9px,.66vw,13px);letter-spacing:.2em;color:var(--c);margin:.9vh 0 .1vh;text-transform:uppercase}
+.dayh:first-child{margin-top:0}
+.bsec{padding:.5vh 0;border-bottom:1px dashed var(--faint);font-size:clamp(12px,.92vw,18px);line-height:1.35;color:#e6fbff}
+.bsec:last-child{border-bottom:0}.bsec .lab{display:block;margin-bottom:.2vh}
+.prow2{display:flex;gap:.6vw;flex-wrap:wrap;margin-top:.8vh}
+.calsrc{display:flex;gap:.8vw;align-items:center;padding:.6vh 0;border-bottom:1px dashed var(--faint);font-size:clamp(11px,.85vw,16px)}
+.calsrc .n{flex:1;color:#e6fbff}.calsrc .n small{display:block;color:var(--dim)}
+.calform{display:grid;grid-template-columns:9em 1fr auto;gap:.6vw;align-items:center;margin:.8vh 0}
+.calform input{background:rgba(2,12,24,.8);border:1px solid var(--faint);color:#e6fbff;font-family:var(--mono);font-size:clamp(11px,.85vw,16px);padding:.5vh .6vw}
+.gm .live{color:var(--ok)}
+
+/* add-on modules: review dialog */
+.modbox{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;background:rgba(1,6,12,.72)}
+.modbox.open{display:flex}
+.modbox .mb{width:min(46vw,760px);max-height:86vh;overflow:auto;padding:2.2vh 1.8vw;border:1px solid var(--c);background:linear-gradient(160deg,rgba(8,36,66,.96),rgba(3,12,24,.97));box-shadow:0 0 40px rgba(53,224,255,.35);font-size:clamp(12px,.9vw,17px);color:#e6fbff;line-height:1.42}
+.modbox h4{margin:0 0 1vh;font-family:var(--mono);letter-spacing:.2em;color:var(--c);font-weight:400;text-transform:uppercase;font-size:clamp(11px,.85vw,16px)}
+.modbox h5{margin:1.4vh 0 .5vh;font-family:var(--mono);letter-spacing:.16em;color:var(--dim);font-weight:400;text-transform:uppercase;font-size:clamp(9px,.68vw,13px)}
+.modbox .lvl{display:inline-block;padding:2px 9px;border:1px solid;font-family:var(--mono);letter-spacing:.12em;text-transform:uppercase;font-size:.85em;margin-left:.6vw}
+.modbox .lvl.low{color:var(--ok);border-color:rgba(93,255,176,.6)}.modbox .lvl.medium{color:var(--warn);border-color:rgba(255,179,71,.6)}.modbox .lvl.high{color:#ff7d7d;border-color:rgba(255,107,107,.7)}
+.modbox ul{margin:.3vh 0 .6vh 1.2em;padding:0}.modbox li{margin:.3vh 0}
+.modbox li.high{color:#ff9d9d}.modbox li.medium{color:var(--warn)}.modbox li small{color:var(--dim);display:block;font-family:var(--mono);font-size:.78em;overflow-wrap:anywhere}
+.modbox .sec{border:1px dashed var(--faint);padding:.9vh .9vw;margin:.5vh 0}
+.modbox .sec.ai{border-style:solid;border-color:rgba(154,243,255,.35)}
+.modbox .note{color:var(--dim);font-size:.88em}
+.modbox .acts{display:flex;gap:.8vw;justify-content:flex-end;margin-top:1.6vh;flex-wrap:wrap}
+.modbox label.ovr{display:flex;gap:.6vw;align-items:flex-start;margin-top:1vh;color:#ff9d9d}
+.remadd{display:flex;gap:.5vw;margin-top:.8vh}.remadd input{flex:1;min-width:0;background:rgba(2,12,24,.8);border:1px solid var(--faint);color:#e6fbff;font-family:var(--mono);font-size:clamp(11px,.82vw,15px);padding:.5vh .5vw}
+.rem{display:flex;gap:.6vw;align-items:center;font-size:clamp(12px,.92vw,18px);padding:.4vh 0;border-bottom:1px dashed var(--faint)}
+.rem .tm{font-family:var(--mono);color:var(--c);min-width:5.2em;white-space:nowrap}.rem .ti{flex:1;color:#e6fbff;overflow-wrap:anywhere}
+.rem.fired{border:1px solid var(--ok);padding:.6vh .6vw;margin:.3vh 0;box-shadow:0 0 14px rgba(93,255,176,.35);animation:fp 1.6s ease-in-out infinite}.rem.fired .tm,.rem.fired .ti{color:var(--ok)}
+.rem .x{background:none;border:1px solid var(--faint);color:var(--dim);cursor:pointer;padding:0 .4vw}
 /* soccer */
 .match{padding:.7vh 0;border-bottom:1px dashed var(--faint)}
 .match:last-child{border-bottom:0}
@@ -422,15 +464,15 @@ body[data-conv=heard] .convring .arc{stroke:var(--c)}
   </header>
 
   <!-- LEFT -->
-  <section class="col">
-    <div class="panel fade" id="t-clock" style="flex:0 0 auto">
+  <section class="col" id="colL">
+    <div class="panel fade" id="t-clock" data-panel="clock" style="flex:0 0 auto">
       <div class="h"><span>▸ Chronometer</span><span class="lab">CST/CDT</span></div>
       <div class="clock"><span id="time">--:--:--</span><small id="ampm"></small></div>
       <div class="date" id="date">—</div>
       <div class="lab tz" id="tz"></div>
     </div>
 
-    <div class="panel fade" id="t-weather" style="animation-delay:.15s;flex:0 0 auto">
+    <div class="panel fade" id="t-weather" data-panel="weather" style="animation-delay:.15s;flex:0 0 auto">
       <div class="h"><span id="wxtitle">▸ Weather</span><span class="tag" id="wxtag">Connecting…</span></div>
       <div class="wxbody">
       <div class="wx-main">
@@ -450,7 +492,7 @@ body[data-conv=heard] .convring .arc{stroke:var(--c)}
             </div>
     </div>
 
-    <div class="panel fade" id="t-scan" style="animation-delay:.3s;flex:1 1 0">
+    <div class="panel fade" id="t-scan" data-panel="scanner" style="animation-delay:.3s;flex:1 1 0">
       <div class="h"><span>▸ Scanner · Location</span><span class="tag">Decorative</span></div>
       <div class="scanner">
         <div class="cell"><canvas id="radar"></canvas><div class="lab">Ambient scan</div><div class="co">SWEEP · 360°<br>&nbsp;</div></div>
@@ -481,13 +523,13 @@ body[data-conv=heard] .convring .arc{stroke:var(--c)}
   </section>
 
   <!-- RIGHT -->
-  <section class="col">
-    <div class="panel fade" id="t-football" style="animation-delay:.1s;flex:1 1 0">
-      <div class="h wrap"><span>▸ Sports</span><span class="tag" id="sptag">Live scores coming soon</span></div>
+  <section class="col" id="colR">
+    <div class="panel fade" id="t-football" data-panel="sports" style="animation-delay:.1s;flex:1 1 0">
+      <div class="h wrap"><span>▸ Sports</span><span class="tag" id="sptag">Scores</span></div>
       <div class="soccer-body" id="teamsbody"></div>
     </div>
 
-    <div class="panel fade" id="t-system" style="animation-delay:.25s;flex:0 0 auto">
+    <div class="panel fade" id="t-system" data-panel="system" style="animation-delay:.25s;flex:0 0 auto">
       <div class="h"><span>▸ System</span><span class="tag" id="systag">Offline</span></div>
       <div class="gauges" id="gauges"></div>
       <div class="sysrow">
@@ -496,7 +538,7 @@ body[data-conv=heard] .convring .arc{stroke:var(--c)}
       </div>
     </div>
 
-    <div class="panel fade" id="t-hermes" style="animation-delay:.4s;flex:0 0 auto">
+    <div class="panel fade" id="t-hermes" data-panel="hermes" style="animation-delay:.4s;flex:0 0 auto">
       <div class="h"><span>▸ Hermes status</span><span class="tag" id="hmtag">Config</span></div>
       <div class="kv">
         <div><span class="lab k">Model</span><div class="vv" id="hm1">Hermes Agent</div></div>
@@ -505,6 +547,22 @@ body[data-conv=heard] .convring .arc{stroke:var(--c)}
       </div>
     </div>
   </section>
+  <div class="modbox" id="modbox" role="dialog" aria-modal="true" aria-labelledby="mbh"><div class="mb" id="mbody"></div></div>
+  <div id="shelf" style="display:none">
+    <div class="panel fade" id="t-calendar" data-panel="calendar" style="animation-delay:.2s;flex:1 1 0">
+      <div class="h wrap"><span>▸ Calendar</span><span class="tag" id="caltag">Not connected</span></div>
+      <div class="soccer-body" id="calbody"></div>
+    </div>
+    <div class="panel fade" id="t-reminders" data-panel="reminders" style="animation-delay:.25s;flex:1 1 0">
+      <div class="h wrap"><span>▸ Reminders &amp; timers</span><span class="tag" id="remtag">None</span></div>
+      <div class="soccer-body" id="rembody"></div>
+      <div class="remadd"><input id="rem-in" maxlength="120" placeholder="call Mike at 3pm · 10 minute timer" aria-label="New reminder or timer"><button class="btn sel" id="rem-add">Add</button></div>
+    </div>
+    <div class="panel fade" id="t-brief" data-panel="brief" style="animation-delay:.3s;flex:1 1 0">
+      <div class="h wrap"><span>▸ Daily brief</span><span class="tag" id="brtag">On demand</span></div>
+      <div class="soccer-body" id="briefbody"></div>
+    </div>
+  </div>
 
   <div class="bar">
     <nav class="dock" id="dock"><button class="dk" data-m="system" aria-label="System"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span>System</span></button><button class="dk" data-m="weather" aria-label="Weather"><svg viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1A3.5 3.5 0 0 0 7 18z"/></svg><span>Weather</span></button><button class="dk" data-m="football" aria-label="Sports"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8l3.5 2.5-1.3 4h-4.4l-1.3-4z"/><path d="M12 3v5M20 10l-4.5.5M17 19l-2.8-4.5M7 19l2.8-4.5M4 10l4.5.5"/></svg><span>Sports</span></button><div class="dsep"></div><button class="dk" data-m="news" aria-label="News"><svg viewBox="0 0 24 24"><path d="M5 5h11v14H7a2 2 0 0 1-2-2z"/><path d="M16 9h3v8a2 2 0 0 1-2 2M8 9h5M8 13h5"/></svg><span>News</span></button><button class="dk" data-m="notes" aria-label="Notes"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg><span>Notes</span></button><button class="dk" data-m="focus" aria-label="Focus"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg><span>Focus</span></button><button class="dk" data-m="chat" aria-label="Chat"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H10l-5 4v-4H4z"/></svg><span>Chat</span></button><button class="dk" data-m="log" aria-label="Log"><svg viewBox="0 0 24 24"><path d="M4 6l5 5-5 5M12 18h8"/></svg><span>Log</span></button><button class="dk" data-m="settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg><span>Settings</span></button></nav>
@@ -654,21 +712,199 @@ function applyProfile(p){
   document.getElementById('globeco').innerHTML=p.lat!=null?'LAT '+Math.abs(p.lat).toFixed(2)+'° '+(p.lat>=0?'N':'S')+'<br>LON '+Math.abs(p.lon).toFixed(2)+'° '+(p.lon>=0?'E':'W'):'&nbsp;<br>&nbsp;';
   renderTeams();loadWx();tick();
 }
+const SC={games:[],live:true,error:'',followed:false,loaded:false};
+function gameBits(g){
+  const h=g.home,a=g.away,mineHome=g.mine&&(h.name.toLowerCase().indexOf(g.mine.toLowerCase())>=0||g.mine.toLowerCase().indexOf(h.name.toLowerCase())>=0);
+  const me=mineHome||!g.mine?h:a,op=me===h?a:h;
+  let score='',meta='';
+  if(g.state==='pre'){let t='';try{t=new Date(g.start).toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit',timeZone:TZ})}catch(e){}score=t;meta=g.league}
+  else{score=me.score+'–'+op.score;meta=(g.state==='in'?'<span class="live">LIVE</span> · '+esc(g.detail||''):esc(g.detail||'Final'))+' · '+esc(g.league)}
+  return {name:me.name,vs:op.name,score,meta,live:g.state==='in'};
+}
 function renderTeams(){
   const el=document.getElementById('teamsbody');if(!el)return;const sp=(PROF.sports||[]);
-  if(!sp.length){el.innerHTML='<div class="ph" style="padding:2vh 0"><div>No sports yet</div><div class="tag">Pick your sports and teams in Settings</div></div>';return}
+  const tg=document.getElementById('sptag');
+  if(!sp.length){el.innerHTML='<div class="ph" style="padding:2vh 0"><div>No sports yet</div><div class="tag">Pick your sports and teams in Settings</div></div>';if(tg){tg.textContent='Scores';tg.className='tag'}return}
   let html='',n=0;const asks=[];
   sp.forEach(e=>{
     html+='<div><div class="sub"><i></i>'+esc(e.sport)+(e.leagues.length?' · '+esc(e.leagues.join(', ')):'')+'</div>';
-    const rows=e.teams.length?e.teams.map(t=>[t,'What was the most recent result for '+t+' ('+e.sport+') and when do they play next? Answer in one or two sentences, and say so if you are not sure.'])
-      :e.leagues.map(l=>[l,'Give me the latest '+l+' ('+e.sport+') results and what is coming up. Keep it to two or three sentences, and say so if you are not sure.']);
+    const gm=(SC.games||[]).filter(g=>g.sport===e.sport);
+    const rows=e.teams.length?e.teams.map(t=>[t,'What was the most recent result for '+t+' ('+e.sport+') and when do they play next? Answer in one or two sentences, and say so if you are not sure.',gm.filter(g=>g.mine===t)])
+      :e.leagues.map(l=>[l,'Give me the latest '+l+' ('+e.sport+') results and what is coming up. Keep it to two or three sentences, and say so if you are not sure.',[]]);
     if(!rows.length)html+='<div class="lab meta" style="padding:.4vh 0">No teams added</div>';
-    rows.forEach(r=>{asks.push(r[1]);html+='<div class="match"><div class="row"><span class="teams">'+esc(r[0])+'</span><button class="btn" data-ask="'+(asks.length-1)+'" style="padding:.2vh .6vw">Ask Hermes</button></div><div class="lab meta">No live feed yet · not scores</div></div>'});
+    const used={};gm.forEach(g=>{if(g.mine)used[g.id]=1});
+    rows.forEach(r=>{asks.push(r[1]);
+      const gs=r[2];
+      html+='<div class="match"><div class="row"><span class="teams">'+esc(r[0])+'</span><button class="btn" data-ask="'+(asks.length-1)+'" style="padding:.2vh .6vw">Ask Hermes</button></div>';
+      if(gs.length)gs.slice(0,2).forEach(g=>{const b=gameBits(g);html+='<div class="gm"><div class="row"><span class="teams"><span class="lab">vs</span> '+esc(b.vs)+'</span><span class="score">'+esc(b.score)+'</span></div><div class="lab meta">'+b.meta+'</div></div>'});
+      else html+='<div class="lab meta">'+(!SC.live?'Live scores are off':SC.error?'Scores unavailable right now':SC.loaded?'No game today or yesterday':'Checking scores…')+'</div>';
+      html+='</div>'});
+    if(!e.teams.length)gm.filter(g=>!g.mine).slice(0,6).forEach(g=>{const b=gameBits(g);html+='<div class="match gm"><div class="row"><span class="teams">'+esc(g.home.name)+' <span class="lab">vs '+esc(g.away.name)+'</span></span><span class="score">'+esc(b.score)+'</span></div><div class="lab meta">'+b.meta+'</div></div>'});
     html+='</div>'});
   el.innerHTML=html;
   el.querySelectorAll('[data-ask]').forEach(b=>b.onclick=()=>{if(!BR.online){log('Bridge offline');return}askHermes(asks[+b.dataset.ask],{speak:true})});
+  if(tg){const any=(SC.games||[]).some(g=>g.state==='in');tg.textContent=!SC.live?'Scores off':SC.error?'Offline':any?'Live':SC.loaded?((SC.games||[]).length?'Scores':'No games'):'Scores';tg.className='tag'+(any?' live':SC.error?' off':'')}
+}
+async function loadScores(){
+  if(!BR.online||!(PROF.sports||[]).length)return;
+  try{const j=await api('/api/scores');SC.games=j.games||[];SC.live=j.live!==false;SC.error=j.error||'';SC.followed=!!j.followed;SC.loaded=true;renderTeams()}catch(e){SC.error='offline';SC.loaded=true;renderTeams()}
 }
 renderTeams();
+
+/* ---------- add-on modules: explanation, review, approval ---------- */
+const MODS={list:[],explain:'',enabled:true,explained:true,pending:[],cur:null,rv:null,busy:false,noticed:{}};
+async function loadModules(){try{const j=await api('/api/modules');MODS.list=j.modules||[];MODS.explain=j.explain||'';MODS.enabled=j.enabled!==false;MODS.explained=!!j.explained;MODS.pending=j.pending||[];if(j.features)FEATS=j.features}catch(e){}return MODS}
+function mbClose(){document.getElementById('modbox').classList.remove('open');MODS.cur=null;MODS.rv=null}
+function mbShell(h){document.getElementById('mbody').innerHTML=h;document.getElementById('modbox').classList.add('open')}
+async function openModules(fid,opt){
+  opt=opt||{};await loadModules();
+  const pend=MODS.pending;
+  if(fid){return reviewModule(fid)}
+  let h='<h4 id="mbh">▸ Add-on modules</h4>'+((MODS.explained&&!opt.explain)?'':'<p>'+esc(MODS.explain)+'</p>');
+  if(MODS.explained&&!opt.explain)h+='<p class="note">Add-ons run on this computer with the same access as '+esc(an())+'. A new one never runs until you approve it.</p>';
+  h+='<h5>New and waiting for you</h5>'+(pend.length?pend.map(p=>'<div class="sec"><b>'+esc(p.title)+'</b> <span class="note">· '+esc(p.origin)+(p.state==='changed'?' · changed since you approved it':'')+'</span><div class="acts" style="margin-top:.6vh"><button class="btn sel" data-rv="'+esc(p.id)+'">Review…</button></div></div>').join(''):'<div class="note">Nothing is waiting.</div>');
+  h+='<div class="acts"><button class="btn" id="mb-close">'+(pend.length?'Not now':'Close')+'</button></div>';
+  mbShell(h);
+  document.querySelectorAll('[data-rv]').forEach(b=>b.onclick=()=>reviewModule(b.dataset.rv));
+  document.getElementById('mb-close').onclick=()=>{mbClose();if(!MODS.explained)post('/api/modules/ack',{}).then(()=>{MODS.explained=true}).catch(()=>{})};
+  if(!MODS.explained)post('/api/modules/ack',{}).then(()=>{MODS.explained=true}).catch(()=>{});
+}
+const LVL={low:'No warning signs',medium:'Some things to know',high:'Serious warning signs'};
+function drawReview(){
+  const v=MODS.rv;if(!v)return;
+  const ai=v.ai||{status:'not_run'};const busy=MODS.busy||ai.status==='not_run';
+  let h='<h4 id="mbh">▸ Review: '+esc(v.title)+'</h4>'+(MODS.explained?'':'<p>'+esc(MODS.explain)+'</p>')+'<div class="note">'+esc(v.origin)+(v.state==='changed'?' · changed since you approved it':'')+'</div>';
+  h+='<h5>What it does</h5><div class="sec">'+(esc(v.description)||'<span class="note">It doesn\'t say. Check the scan below.</span>')+'<ul>'+(v.scan.capabilities||[]).map(c=>'<li>'+esc(c)+'</li>').join('')+'</ul></div>';
+  h+='<h5>Automatic check <span class="lvl '+v.scan.level+'">'+LVL[v.scan.level]+'</span></h5><div class="sec">';
+  const fl=(v.scan.findings||[]).filter(f=>f.severity!=='info');
+  h+=fl.length?'<ul>'+fl.map(f=>'<li class="'+f.severity+'">'+esc(f.what)+(f.snippet?'<small>'+(f.line?'line '+f.line+': ':'')+esc(f.snippet)+'</small>':'')+'</li>').join('')+'</ul>':'<div>I found none of the usual warning signs.</div>';
+  h+='<div class="note">'+esc(v.how)+' This catches common tricks; it can\'t prove anything is safe.</div></div>';
+  h+='<h5>Second opinion from your own AI'+(v.provider?' ('+esc(v.provider)+')':'')+'</h5><div class="sec ai" id="mb-ai">';
+  if(busy)h+='<div>Asking your AI to read it… (this sends the module\'s code to your AI)</div>';
+  else if(ai.status==='done')h+='<div><b>'+({safe:'Looks fine',caution:'Be careful',dangerous:'Looks dangerous',unclear:'No clear answer'}[ai.verdict]||ai.verdict)+'</b></div><div>'+esc(ai.text)+'</div>';
+  else h+='<div>'+esc(ai.text||'No second opinion available.')+'</div>';
+  h+='<div class="note">A second opinion, not a guarantee: an AI can miss things or be fooled by what\'s written in the code. The automatic check above does not depend on it.</div></div>';
+  const high=v.scan.level==='high';
+  h+=(high?'<label class="ovr"><input type="checkbox" id="mb-ovr"> I understand this add-on can do the risky things listed above, and I trust where it came from.</label>':'');
+  h+='<div class="acts"><button class="btn" id="mb-decline">Decline</button><button class="btn" id="mb-later">Decide later</button><button class="btn sel" id="mb-ok" '+(busy?'disabled':'')+'>'+(high?'Approve anyway and turn on':'Approve and turn on')+'</button></div>';
+  mbShell(h);
+  document.getElementById('mb-later').onclick=mbClose;
+  document.getElementById('mb-decline').onclick=async()=>{try{await post('/api/modules/'+encodeURIComponent(MODS.cur)+'/reject',{});log('Add-on declined: '+v.title)}catch(e){}mbClose();await loadModules();if(ovMode==='settings')renderSettings(true)};
+  document.getElementById('mb-ok').onclick=async()=>{
+    if(high&&!document.getElementById('mb-ovr').checked){document.getElementById('mb-ovr').parentElement.style.outline='1px solid #ff7d7d';return}
+    try{const j=await post('/api/modules/'+encodeURIComponent(MODS.cur)+'/approve',{override:high,enable:true});FEATS=j.features||FEATS;mbClose();log('Add-on approved: '+v.title);setCaption(an(),v.title+' is approved and on.');await loadModules();if(ovMode==='settings')renderSettings(true)}
+    catch(e){const el=document.getElementById('mb-ai');if(el)el.insertAdjacentHTML('beforeend','<div style="color:#ff9d9d;margin-top:.6vh">'+esc(e.message)+'</div>')}};
+}
+async function reviewModule(fid){
+  MODS.cur=fid;MODS.busy=true;
+  try{const j=await api('/api/modules/'+encodeURIComponent(fid)+'/review');MODS.rv=j;drawReview();
+    const o=await post('/api/modules/'+encodeURIComponent(fid)+'/opinion',{});MODS.rv=o}      /* the scan shows at once; the AI's second opinion follows */
+  catch(e){MODS.rv=MODS.rv||{title:fid,description:'',scan:{level:'high',findings:[],capabilities:[]},ai:{status:'unavailable',text:e.message},how:''}}
+  MODS.busy=false;if(MODS.cur===fid)drawReview();
+}
+function addonsNotice(a){                /* from /api/health: explain once, and tell about any new add-on (never turns anything on) */
+  if(!a||SU.open||document.getElementById('modbox').classList.contains('open'))return;
+  const fresh=(a.pending||[]).filter(p=>!MODS.noticed[p.id+':'+p.state]);
+  if(!a.explained||fresh.length){fresh.forEach(p=>MODS.noticed[p.id+':'+p.state]=1);log(fresh.length?'New add-on waiting for approval: '+fresh.map(p=>p.title).join(', '):'About add-on modules');openModules()}
+}
+/* ---------- reminders & timers ---------- */
+const REMS={items:[],alerts:[],off:0,chime:true,msg:''};
+function alertChime(){   /* three rising notes, ~0.7 s */
+  if(!REMS.chime)return;
+  try{const c=audioCtx(),t=c.currentTime,g=c.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.09,t+0.03);g.gain.exponentialRampToValueAtTime(0.0001,t+0.75);g.connect(c.destination);
+    [[523,0],[659,0.2],[784,0.4]].forEach(([f,d])=>{const o=c.createOscillator();o.type='sine';o.frequency.value=f;o.connect(g);o.start(t+d);o.stop(t+d+0.3)})}catch(e){}
+}
+function remLeft(i){return Math.max(0,Math.round(i.due-(Date.now()/1000+REMS.off)))}
+function remClock(sec){const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s).padStart(2,'0')}
+function renderRem(){
+  const el=document.getElementById('rembody'),tg=document.getElementById('remtag');if(!el)return;
+  let html='';
+  REMS.alerts.forEach(a=>{html+='<div class="rem fired"><span class="tm">'+(a.kind==='timer'?'Timer':'Now')+'</span><span class="ti">'+esc(a.kind==='timer'?(a.text||a.label||'Timer done'):a.text)+'</span><button class="btn" data-rdis="'+esc(a.id)+'">Done</button></div>'});
+  REMS.items.forEach(i=>{html+='<div class="rem" data-rid="'+esc(i.id)+'"><span class="tm" data-rleft="'+esc(i.id)+'">'+(i.kind==='timer'?remClock(remLeft(i)):esc(i.due_label))+'</span><span class="ti">'+(i.kind==='timer'?'⏲ '+esc(i.text||i.label||'Timer'):esc(i.text))+'</span><button class="x" data-rcan="'+esc(i.id)+'" aria-label="Cancel">✕</button></div>'});
+  if(!html)html='<div class="ph" style="padding:1vh 0"><div>Nothing set</div><div class="tag">Say “remind me at 3 to call Mike”</div></div>';
+  if(REMS.msg)html+='<div class="lab meta" style="padding-top:.6vh">'+esc(REMS.msg)+'</div>';
+  el.innerHTML=html;
+  const n=REMS.items.length;tg.textContent=REMS.alerts.length?'Due now':n?n+' set':'None';tg.className='tag'+(REMS.alerts.length?' live':'');
+  el.querySelectorAll('[data-rdis]').forEach(b=>b.onclick=()=>remAct(b.dataset.rdis,'dismiss'));
+  el.querySelectorAll('[data-rcan]').forEach(b=>b.onclick=()=>remAct(b.dataset.rcan,'cancel'));
+}
+function remTick(){
+  document.querySelectorAll('[data-rleft]').forEach(e=>{const i=REMS.items.find(x=>x.id===e.dataset.rleft);if(i&&i.kind==='timer')e.textContent=remClock(remLeft(i))});
+}
+setInterval(remTick,1000);
+function remApply(j){REMS.items=j.items||[];REMS.alerts=j.alerts||[];REMS.chime=j.chime!==false;if(j.now)REMS.off=j.now-Date.now()/1000;renderRem()}
+async function loadReminders(){if(!BR.online)return;try{remApply(await api('/api/reminders'))}catch(e){}}
+async function remAct(id,act){try{remApply(await post('/api/reminders/'+encodeURIComponent(id)+'/'+act,{}))}catch(e){}}
+async function remAdd(){
+  const inp=document.getElementById('rem-in');if(!inp||!inp.value.trim())return;
+  try{const j=await post('/api/reminders/quick',{text:inp.value});inp.value='';REMS.msg=j.message||'';remApply(j);setTimeout(()=>{REMS.msg='';renderRem()},6000)}catch(e){REMS.msg=e.message;renderRem()}
+}
+document.getElementById('rem-add').onclick=remAdd;document.getElementById('rem-in').addEventListener('keydown',e=>{if(e.key==='Enter')remAdd()});
+renderRem();
+/* ---------- calendar panel ---------- */
+const CALS={events:[],configured:false,sources:[],loaded:false,now:null};
+function panelOn(id){const el=document.querySelector('.panel[data-panel="'+id+'"]');return !!(el&&el.dataset.slot)}
+function dayKey(d){try{return d.toLocaleDateString('en-CA',{timeZone:TZ})}catch(e){return d.toISOString().slice(0,10)}}
+function renderCalendar(){
+  const el=document.getElementById('calbody'),tg=document.getElementById('caltag');if(!el)return;
+  if(!CALS.loaded){el.innerHTML='<div class="ph"><div>Loading…</div></div>';return}
+  if(!CALS.configured){tg.textContent='Not connected';tg.className='tag';
+    el.innerHTML='<div class="ph" style="padding:1vh 0"><div>No calendar yet</div><div class="tag">Add a calendar link or .ics file</div><button class="btn sel" id="cal-add">Add a calendar</button></div>';
+    document.getElementById('cal-add').onclick=()=>{ATLAS.openSettings('general')};return}
+  const bad=(CALS.sources||[]).filter(x=>!x.ok&&x.error);
+  const now=CALS.now?new Date(CALS.now):new Date(),today=dayKey(now),tom=dayKey(new Date(now.getTime()+864e5));
+  let html='',last='',n=0,todayN=0;
+  (CALS.events||[]).forEach(ev=>{const st=new Date(ev.start),en=new Date(ev.end),k=dayKey(st);
+    if(k===today)todayN++;if(n>=10)return;n++;
+    if(k!==last){last=k;html+='<div class="dayh">'+(k===today?'Today':k===tom?'Tomorrow':st.toLocaleDateString([],{weekday:'long',month:'short',day:'numeric',timeZone:TZ}))+'</div>'}
+    const cur=!ev.all_day&&st<=now&&now<en;
+    html+='<div class="ev'+(cur?' cur':'')+(!ev.all_day&&en<=now?' past':'')+'"><span class="tm">'+(ev.all_day?'All day':st.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',timeZone:TZ}))+'</span><span class="ti">'+esc(ev.title)+(ev.location?' <small>· '+esc(ev.location)+'</small>':'')+'</span></div>'});
+  if(!html)html='<div class="ph" style="padding:1vh 0"><div>Nothing coming up</div><div class="tag">Next 7 days are clear</div></div>';
+  if(bad.length)html+='<div class="lab meta" style="padding-top:.8vh;color:var(--warn)">'+esc(bad[0].name)+': '+esc(bad[0].error)+'</div>';
+  el.innerHTML=html;tg.textContent=bad.length?'Check link':todayN?todayN+' today':'Clear';tg.className='tag'+(bad.length?' off':todayN?' live':'');
+}
+async function loadCalendar(force){
+  if(!BR.online)return;
+  try{const j=await api('/api/calendar?days=7'+(force?'&refresh=1':''));CALS.events=j.events||[];CALS.configured=!!j.configured;CALS.sources=j.sources||[];CALS.now=j.now;CALS.loaded=true}
+  catch(e){CALS.loaded=true;CALS.configured=CALS.configured||false}
+  renderCalendar();
+}
+/* ---------- daily brief panel ---------- */
+const BRIEF={data:null,loading:false};
+function renderBrief(b){
+  if(b)BRIEF.data=b;
+  const el=document.getElementById('briefbody'),tg=document.getElementById('brtag');if(!el)return;
+  const d=BRIEF.data;
+  if(BRIEF.loading){el.innerHTML='<div class="ph"><div>Putting it together…</div></div>';tg.textContent='Working';return}
+  if(!d){tg.textContent='On demand';tg.className='tag';
+    el.innerHTML='<div class="ph" style="padding:1vh 0"><div>Weather · calendar · sports · reminders</div><div class="tag">Say “give me my brief”</div><button class="btn sel" id="br-get">Get my brief</button></div>';
+    document.getElementById('br-get').onclick=()=>loadBrief(false);return}
+  const L={weather:'Weather',calendar:'Calendar',sports:'Sports',reminders:'Reminders'};
+  let html=Object.keys(L).filter(k=>d.sections&&d.sections[k]).map(k=>'<div class="bsec"><span class="lab">'+L[k]+'</span>'+esc(d.sections[k])+'</div>').join('');
+  html+='<div class="prow2"><button class="btn sel" id="br-say">Read it to me</button><button class="btn" id="br-ref">Refresh</button></div>';
+  el.innerHTML=html;tg.textContent=(d.generated||'').slice(11,16)||'Ready';tg.className='tag live';
+  document.getElementById('br-say').onclick=()=>{stopSpeaking();if(!speakOn)log('Spoken replies are muted');speak(BRIEF.data.text)};
+  document.getElementById('br-ref').onclick=()=>loadBrief(false);
+}
+async function loadBrief(say){
+  if(!BR.online)return;BRIEF.loading=true;renderBrief();
+  try{const j=await api('/api/brief');BRIEF.loading=false;renderBrief(j);if(say&&speakOn)speak(j.text)}
+  catch(e){BRIEF.loading=false;renderBrief()}
+}
+const MB={done:false};
+async function morningBrief(){          /* once per page load: the bridge says whether today's automatic brief is due (switched on, not given yet today, morning) */
+  if(MB.done||!BR.online||SU.open)return;MB.done=true;
+  try{const j=await post('/api/brief/morning',{});if(!j.due)return;
+    BRIEF.data=j;renderBrief();addMsg('assistant',j.text);setCaption(an(),j.text);log('Morning brief');
+    if(speakOn)await speak(j.text)}catch(e){}
+}
+function panelsChanged(){
+  if(panelOn('reminders'))loadReminders();if(panelOn('calendar'))loadCalendar();if(panelOn('brief'))renderBrief();if(panelOn('sports'))loadScores();
+}
+setInterval(()=>{if(panelOn('calendar')&&!document.hidden)loadCalendar()},5*60*1000);
+setInterval(()=>{if(panelOn('sports')&&!document.hidden)loadScores()},60*1000);
+setInterval(()=>{if(!MB.done&&BR.online&&!document.hidden)morningBrief()},20*1000);
+setTimeout(()=>{if(BR.online)morningBrief()},3000);
 
 /* ---------- gauges (example data) ---------- */
 const G=[['CPU',null,'offline'],['GPU',null,'offline'],['RAM',null,'offline']];
@@ -700,6 +936,11 @@ function fit(){
 window.addEventListener('resize',fit);fit();
 const stateEl=document.getElementById('state');
 let orbMode='idle',lvl=0,lvlS=0;
+let orbScene='',sceneUntil=0,sceneOn=true;      /* what the centre shows besides idle/listening/speaking: searching, weather, music (thinking has its own comets) */
+const SCENE_HOLD={searching:1500,weather:9000,music:40000};
+function sceneFor(text){const t=String(text||'').toLowerCase();
+  return /\b(weather|forecast|temperature|rain|raining|snow|umbrella|humid|how (?:hot|cold)|wind)\b/.test(t)?'weather':/\b(play|music|song|songs|playlist|spotify|album|tune|tunes)\b/.test(t)?'music':/\b(search|look up|google|find out|research|news|headlines|who is|who was|latest)\b/.test(t)?'searching':''}
+function setScene(sc){orbScene=sceneOn?sc:'';sceneUntil=orbScene?Infinity:0;if(orbScene)document.body.dataset.scene=orbScene;else delete document.body.dataset.scene}
 const ORB_T={idle:0,listening:1,transcribing:.5,thinking:.45,speaking:.85};
 cv.addEventListener('click',()=>voiceToggle());
 document.getElementById('mic').addEventListener('click',()=>voiceToggle());
@@ -711,6 +952,7 @@ window.addEventListener('keydown',e=>{const tg=e.target.tagName;
 const N=96;
 function frame(now){
   const t=(now-t0)/1000;
+  if(orbScene&&orbMode==='idle'&&performance.now()>sceneUntil)setScene('');
   target=ORB_T[orbMode]||0;amp+=(target-amp)*0.06;lvlS+=(lvl-lvlS)*0.35;
   const w=cv.width,h=cv.height,cx=w/2,cy=h/2,S=Math.min(w,h)/2;
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);
@@ -762,6 +1004,29 @@ function frame(now){
     ctx.beginPath();ctx.arc(0,0,S*0.36+S*0.032,a,a+Math.PI*2/10*0.62);ctx.lineWidth=1.5*dpr;ctx.strokeStyle='rgba(154,243,255,.9)';ctx.stroke();}
   ctx.restore();
   line(S*0.29,2,.8);line(S*0.25,1,.4);
+  // task scenes (centre): thinking comets, searching sweep, weather rays + rain, music equaliser
+  if(sceneOn&&(orbMode==='thinking'||orbMode==='transcribing')&&!orbScene){
+    for(let i=0;i<3;i++){const a0=t*3.2+i*2.094;for(let k=0;k<7;k++){const a=a0-k*0.09;ctx.beginPath();ctx.arc(cx+Math.cos(a)*S*0.52,cy+Math.sin(a)*S*0.52,(3.2-k*0.35)*dpr,0,7);ctx.fillStyle=`rgba(154,243,255,${.9-k*.12})`;ctx.fill()}}
+  }
+  if(orbScene==='searching'){
+    ctx.save();ctx.translate(cx,cy);ctx.rotate(t*2.2);
+    for(let k=0;k<16;k++){ctx.beginPath();ctx.arc(0,0,S*0.4,-k*0.065,-k*0.065+0.07);ctx.lineWidth=S*0.46;ctx.strokeStyle=`rgba(80,230,255,${(1-k/16)*.2})`;ctx.stroke()}
+    ctx.beginPath();ctx.moveTo(S*0.17,0);ctx.lineTo(S*0.63,0);ctx.lineWidth=2*dpr;ctx.strokeStyle='rgba(190,250,255,.9)';ctx.stroke();ctx.restore();
+    for(let i=0;i<5;i++){const a=i*1.9+0.6,r=S*(0.3+0.07*i),d=((t*2.2-a)%(Math.PI*2)+Math.PI*2)%(Math.PI*2);const al=Math.max(0,1-d/3);
+      ctx.beginPath();ctx.arc(cx+Math.cos(a)*r,cy+Math.sin(a)*r,(2+3*al)*dpr,0,7);ctx.fillStyle=`rgba(190,250,255,${.2+.8*al})`;ctx.fill()}
+  }
+  if(orbScene==='weather'){
+    ctx.save();ctx.translate(cx,cy);ctx.rotate(t*0.15);
+    for(let i=0;i<32;i++){const a=i/32*Math.PI*2,L=S*(0.05+0.04*Math.sin(t*2+i*1.3));ctx.beginPath();ctx.moveTo(Math.cos(a)*S*0.66,Math.sin(a)*S*0.66);ctx.lineTo(Math.cos(a)*(S*0.66+L),Math.sin(a)*(S*0.66+L));ctx.lineWidth=2*dpr;ctx.strokeStyle='rgba(190,250,255,.55)';ctx.stroke()}
+    ctx.restore();ctx.save();ctx.beginPath();ctx.arc(cx,cy,S*0.62,0,7);ctx.clip();
+    for(let i=0;i<22;i++){const fx=(i*0.618034)%1,fy=((t*0.45+i*0.37)%1),x=cx+(fx-.5)*S*1.2,y=cy+(fy-.5)*S*1.3;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-S*0.012,y+S*0.05);ctx.lineWidth=2.2*dpr;ctx.strokeStyle='rgba(150,215,255,.9)';ctx.stroke()}
+    ctx.restore();
+  }
+  if(orbScene==='music'){
+    for(let i=0;i<48;i++){const a=i/48*Math.PI*2,L=S*(0.02+0.13*Math.abs(Math.sin(t*4+i*0.55))*Math.abs(Math.sin(t*1.7+i*0.21)));
+      ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*S*0.68,cy+Math.sin(a)*S*0.68);ctx.lineTo(cx+Math.cos(a)*(S*0.68+L),cy+Math.sin(a)*(S*0.68+L));ctx.lineWidth=4*dpr;ctx.lineCap='round';ctx.strokeStyle=`rgba(154,243,255,${.4+.5*L/(S*0.15)})`;ctx.stroke()}
+    line(S*(0.64+0.03*Math.abs(Math.sin(t*4))),2,.45);
+  }
   // core
   const cr=S*(0.2+amp*0.02)*breathe;
   g=ctx.createRadialGradient(cx,cy,0,cx,cy,cr*1.6);
@@ -937,7 +1202,7 @@ const post=(p,o)=>api(p,{method:'POST',headers:{'Content-Type':'application/json
 const STATES={idle:['Standing by','All systems nominal'],listening:['Listening…','Voice channel open'],transcribing:['Transcribing…','Processing speech'],
   thinking:['Thinking…',()=>an()+' is working'],speaking:['Speaking…',()=>an()+' is speaking']};
 function setOrb(m){
-  orbMode=m;document.body.dataset.orb=m;if(window.ATLAS&&ATLAS.dispatch)ATLAS.dispatch({type:'orb',mode:m});
+  orbMode=m;document.body.dataset.orb=m;if(m==='idle'&&orbScene&&sceneUntil===Infinity)sceneUntil=performance.now()+(SCENE_HOLD[orbScene]||2000);if(window.ATLAS&&ATLAS.dispatch)ATLAS.dispatch({type:'orb',mode:m});
   let [a,b]=STATES[m];if(typeof b==='function')b=b();
   if(m==='idle'&&!BR.online){a='Bridge offline';b='Launch ATLAS to connect'}
   stateEl.textContent=a;document.getElementById('greetsub').textContent=b;
@@ -1004,8 +1269,14 @@ function applyLocal(r){
   if(r.assistant)applyAssistant(r.assistant);
   const ch=r.changed||[];
   if(ch.some(x=>x.indexOf('module.')===0))loadFeatures();
+  if(r.brief){BRIEF.data=r.brief;renderBrief()}
+  if(ch.indexOf('reminders')>=0)loadReminders();
+  if(ch.indexOf('addons.enabled')>=0)loadModules();
+  if(ch.indexOf('calendar.sources')>=0)loadCalendar(true);
+  if(ch.indexOf('user.sports')>=0)loadScores();
   if(ch.length){ED=null;loadSettings();if(ovMode==='settings')renderSettings(true)}
   if(r.ui&&r.ui.open==='ai'){SU.sel=r.ui.provider||'';openSetup({ai:true})}
+  if(r.ui&&r.ui.open==='modules')openModules(r.ui.module||null);
 }
 /* ---- ask Hermes (text) ---- */
 async function askHermes(text,opt){
@@ -1014,7 +1285,7 @@ async function askHermes(text,opt){
   if(CONV.state!=='off')convEnd('new request');
   stopSpeaking();
   addMsg('user',text);setCaption('YOU',text);log('You: '+text.slice(0,60));
-  setOrb('thinking');
+  setScene(sceneFor(text));setOrb('thinking');
   try{
     const r=await post('/api/chat',{text});
     if(r.local)applyLocal(r);
@@ -1106,15 +1377,28 @@ try{CONV.on=localStorage.getItem('atlas_conv_on')!=='0';const sv=parseFloat(loca
 function convSave(){try{localStorage.setItem('atlas_conv_on',CONV.on?'1':'0');localStorage.setItem('atlas_conv_secs',String(CONV.secs))}catch(e){}}
 /* ---- settings registry (the bridge owns it: GET /api/settings; voice/chat and this screen change the same values) ---- */
 let SETS=[];
-const PANEL_IDS={clock:'t-clock',weather:'t-weather',scanner:'t-scan',sports:'t-football',system:'t-system',hermes:'t-hermes'};
-function applyPanels(hidden){hidden=hidden||[];Object.keys(PANEL_IDS).forEach(k=>{const el=document.getElementById(PANEL_IDS[k]);if(el)el.style.display=hidden.indexOf(k)>=0?'none':''})}
+const SLOT_ORDER=['L1','L2','L3','R1','R2','R3'];
+const GROW_PANELS=['scanner','sports','calendar','reminders','brief'];      /* these fill the free height of their column */
+function applyLayout(lay){
+  lay=lay||{};if(!document.getElementById('shelf')){const sh=document.createElement('div');sh.id='shelf';sh.style.display='none';document.body.appendChild(sh)}
+  const cols={L:document.getElementById('colL'),R:document.getElementById('colR')},placed={L:[],R:[]},on={};
+  SLOT_ORDER.forEach(sl=>{const pid=lay[sl];const el=pid&&document.querySelector('.panel[data-panel="'+pid+'"]');if(el){cols[sl[0]].appendChild(el);el.style.display='';el.dataset.slot=sl;placed[sl[0]].push(el);on[pid]=1}});
+  document.querySelectorAll('.panel[data-panel]').forEach(el=>{if(!on[el.dataset.panel]){document.getElementById('shelf').appendChild(el);delete el.dataset.slot}});
+  ['L','R'].forEach(c=>{const els=placed[c];const hasGrow=els.some(el=>GROW_PANELS.indexOf(el.dataset.panel)>=0);
+    els.forEach((el,i)=>{const grow=GROW_PANELS.indexOf(el.dataset.panel)>=0||(!hasGrow&&i===els.length-1);el.style.flex=grow?'1 1 0':'0 0 auto';el.style.minHeight=grow?'0':''})});
+  window.__layout=lay;
+  if(typeof panelsChanged==='function')panelsChanged();
+}
 function applyPrefs(p){
   if(!p)return;
   if(typeof p.conversation_on==='boolean'){CONV.on=p.conversation_on;if(!CONV.on&&CONV.state!=='off')convEnd('turned off')}
   if(p.conversation_secs>=3&&p.conversation_secs<=15)CONV.secs=Math.round(p.conversation_secs);
   convSave();
   if(typeof p.mute==='boolean'){speakOn=!p.mute;try{localStorage.setItem('hermes_hud_speak',speakOn?'1':'0')}catch(e){}const sb=document.getElementById('spk');if(sb)sb.classList.toggle('sel',speakOn);if(!speakOn)stopSpeaking()}
-  applyPanels(p.panels_hidden);
+  if(typeof p.reminder_chime==='boolean')REMS.chime=p.reminder_chime;
+  document.documentElement.dataset.skin=p.skin||'cyan';
+  if(typeof p.task_animations==='boolean'){sceneOn=p.task_animations;if(!sceneOn)setScene('')}
+  if(p.layout)applyLayout(p.layout);
 }
 async function loadSettings(){try{const j=await api('/api/settings');SETS=j.settings||[];applyPrefs(j.prefs);if(j.profile)applyProfile(j.profile);if(j.assistant)applyAssistant(j.assistant);if(ovMode==='settings'&&setTab==='general')renderSettings(true)}catch(e){}}
 /* a setting changed from the Settings screen: the bridge applies and saves it; a risky one asks first (409 + prompt) */
@@ -1251,6 +1535,7 @@ function applyHealth(h){
     const ht=document.getElementById('hmtag');ht.textContent=BR.fix?'Connect Hermes':BR.hermes?'Hermes online':'Hermes unreachable';ht.className='tag '+(BR.hermes&&!BR.fix?'live':'off')+(BR.fix?' fixchip':'');
   }
   if(was!==BR.online&&orbMode==='idle')setOrb('idle');
+  if(h&&h.addons){MODS.enabled=h.addons.enabled!==false;setTimeout(()=>addonsNotice(h.addons),1200)}
 }
 async function pollHealth(){
   if(!isHttp){applyHealth(null);return}
@@ -1306,6 +1591,12 @@ const ATLAS={
       b.addEventListener('click',()=>openMod(id));document.getElementById('dock').appendChild(b)}},
 };
 window.ATLAS=ATLAS;window.MODI=ATLAS;/* legacy-modi: third-party modules written for the old name keep working */
+ATLAS.on('reminders',()=>loadReminders());
+ATLAS.on('reminder',m=>{                  /* a reminder or timer is due: chime, then say it */
+  loadReminders();log((m.kind==='timer'?'Timer':'Reminder')+' due · '+(m.text||m.label||''));
+  addMsg('assistant',m.speak,{kind:'feature'});setCaption(an(),m.speak);alertChime();
+  setTimeout(()=>{if(speakOn)speak(m.speak)},REMS.chime?800:0);
+});
 ATLAS.on('say',m=>{addMsg('assistant',m.text,{kind:'feature'});setCaption(an(),m.text);speak(m.text)});
 ATLAS.on('notify',m=>{log(m.text);setCaption('',m.text,m.level==='error')});
 ATLAS.on('features',m=>{FEATS=m.features;if(ovMode==='settings')renderSettings();loadFeatureUi()});
@@ -1363,7 +1654,7 @@ function loadFeatureUi(){
   FEATS.forEach(f=>{if(f.ui&&f.enabled&&f.status==='running'&&!loadedUi[f.id]){loadedUi[f.id]=1;
     const sc=document.createElement('script');sc.src='/modules/'+f.id+'.js';sc.onerror=()=>log('Feature UI failed · '+f.id);document.body.appendChild(sc)}});
 }
-const FSTAT={running:['on','run'],off:['off',''],starting:['starting',''],needs_install:['needs install','bad'],error:['error','bad'],not_installed:['coming soon','']};
+const FSTAT={needs_approval:['needs approval','bad'],addons_off:['add-ons off',''],running:['on','run'],off:['off',''],starting:['starting',''],needs_install:['needs install','bad'],error:['error','bad'],not_installed:['coming soon','']};
 let setTab='profile',ED=null;
 const SPORTS=['Soccer','NFL','NBA','MLB','NHL','College football','F1'];
 const T_NFL=['Arizona Cardinals','Atlanta Falcons','Baltimore Ravens','Buffalo Bills','Carolina Panthers','Chicago Bears','Cincinnati Bengals','Cleveland Browns','Dallas Cowboys','Denver Broncos','Detroit Lions','Green Bay Packers','Houston Texans','Indianapolis Colts','Jacksonville Jaguars','Kansas City Chiefs','Las Vegas Raiders','Los Angeles Chargers','Los Angeles Rams','Miami Dolphins','Minnesota Vikings','New England Patriots','New Orleans Saints','New York Giants','New York Jets','Philadelphia Eagles','Pittsburgh Steelers','San Francisco 49ers','Seattle Seahawks','Tampa Bay Buccaneers','Tennessee Titans','Washington Commanders'];
@@ -1447,16 +1738,20 @@ function paintFeatx(id){
 }
 function renderFeaturesTab(){
   const rows=FEATS.slice().sort((a,b)=>(b.installed-a.installed)||(b.enabled-a.enabled)).map(f=>{const [lab,cls]=FSTAT[f.status]||[f.status,''];
-    const dis=!f.installed;
+    const dis=!f.installed||f.status==='needs_approval'||f.status==='addons_off';
     return `<div class="feat" data-setting="module.${f.id}"><div class="ft"><b>${esc(f.title)}</b><span>${esc(f.description).replace(/&lt;name&gt;/g,esc(an()))}${f.error?' · '+esc(f.error):''}${f.missing&&f.missing.length&&f.enabled?' · missing: '+esc(f.missing.join(', ')):''}</span></div>
-      <span class="st ${cls}">${lab}</span>${f.status==='needs_install'?`<button class="btn" data-inst="${f.id}">Install</button>`:''}
-      <button class="sw ${f.enabled?'on':''}" data-feat="${f.id}" ${dis?'disabled':''} aria-label="Toggle ${esc(f.title)}" title="${dis?'Not installed in this version':'Toggle'}"></button></div>${f.enabled&&f.status==='running'&&f.ui?`<div class="featx" data-featx="${f.id}"></div>`:''}`}).join('');
+      <span class="st ${cls}">${lab}</span>${f.status==='needs_install'?`<button class="btn" data-inst="${f.id}">Install</button>`:''}${f.status==='needs_approval'?`<button class="btn sel" data-review="${f.id}">Review…</button>`:''}
+      <button class="sw ${f.enabled?'on':''}" data-feat="${f.id}" ${dis?'disabled':''} aria-label="Toggle ${esc(f.title)}" title="${!f.installed?'Not installed in this version':f.status==='needs_approval'?'Review it first':f.status==='addons_off'?'Add-on modules are switched off':'Toggle'}"></button></div>${f.enabled&&f.status==='running'&&f.ui?`<div class="featx" data-featx="${f.id}"></div>`:''}`}).join('');
   const convRows='<div class="feat" id="convcard" data-setting="conversation.on"><div class="ft"><b>Conversation mode</b><span>After '+esc(an())+' speaks an answer to something you said, it listens again for a few seconds so you can reply without pressing anything. Say “that’s all”, “stop” or “thanks” (or press Esc) to end it. It never listens while it is talking.</span></div><span class="st '+(CONV.on?'run':'')+'">'+(CONV.on?'On':'Off')+'</span><button class="sw '+(CONV.on?'on':'')+'" id="conv-sw" aria-label="Toggle conversation mode"></button></div>'+
     '<div class="feat" id="convsecs" data-setting="conversation.secs"><div class="ft"><b>Listening window</b><span>How long it waits for you to start talking before it stops quietly (3–15 seconds).</span></div><input class="convrng" id="conv-range" type="range" min="3" max="15" step="1" value="'+CONV.secs+'" aria-label="Conversation listening window in seconds"><span class="st" id="conv-val">'+CONV.secs+' s</span></div>';
-  document.getElementById('settab').innerHTML=convRows+'<div class="featlist" id="featlist">'+(rows||'<div class="ph">No features</div>')+'</div>';
+  const masterRow='<div class="feat" id="addonsrow" data-setting="addons.enabled"><div class="ft"><b>Add-on modules</b><span>Master switch. Add-ons are extra programs that run with ATLAS\'s access to this computer, so a new one never runs until you review and approve it. Off = none of them can run. <a href="#" id="addons-why" style="color:var(--c)">Why and how?</a></span></div><span class="st '+(MODS.enabled?'run':'')+'">'+(MODS.enabled?'On':'Off')+'</span><button class="sw '+(MODS.enabled?'on':'')+'" id="addons-sw" aria-label="Toggle add-on modules"></button></div>';
+  document.getElementById('settab').innerHTML=convRows+masterRow+'<div class="featlist" id="featlist">'+(rows||'<div class="ph">No features</div>')+'</div>';
   document.getElementById('conv-sw').onclick=()=>{CONV.on=!CONV.on;convSave();if(!CONV.on)convEnd('turned off');log('Conversation mode '+(CONV.on?'on':'off'));setSetting('conversation.on',CONV.on);renderSettings(true)};
   document.getElementById('conv-range').oninput=e=>{CONV.secs=Math.max(3,Math.min(15,+e.target.value||6));document.getElementById('conv-val').textContent=CONV.secs+' s';convSave();clearTimeout(window.__convT);window.__convT=setTimeout(()=>setSetting('conversation.secs',CONV.secs),250)};
   const ovb2=document.getElementById('settab');
+  document.getElementById('addons-sw').onclick=async()=>{const j=await setSetting('addons.enabled',!MODS.enabled);if(j){await loadModules();await loadFeatures();renderSettings(true)}};
+  document.getElementById('addons-why').onclick=e=>{e.preventDefault();openModules(null,{explain:true})};
+  ovb2.querySelectorAll('[data-review]').forEach(b=>b.onclick=()=>openModules(b.dataset.review));
   FEATS.forEach(f=>paintFeatx(f.id));
   ovb2.querySelectorAll('[data-feat]').forEach(b=>b.onclick=async()=>{
     const f=FEATS.find(x=>x.id===b.dataset.feat);
@@ -1470,9 +1765,21 @@ function renderFeaturesTab(){
 function genRow(s){
   let ctl='';
   if(s.kind==='bool')ctl='<span class="st '+(s.value?'run':'')+'">'+(s.id.indexOf('panel.')===0?(s.value?'Shown':'Hidden'):(s.value?'On':'Off'))+'</span><button class="sw '+(s.value?'on':'')+'" data-gset="'+esc(s.id)+'" aria-label="Toggle '+esc(s.title)+'"></button>';
-  else if(s.kind==='enum')ctl='<select class="gsel" data-gsel="'+esc(s.id)+'" aria-label="'+esc(s.title)+'">'+(s.choices||[]).map(c=>'<option'+(c===s.value?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select>';
-  else if(s.kind==='action')ctl='<button class="btn'+(s.confirm?'':' sel')+'" data-gact="'+esc(s.id)+'">'+esc(s.id==='updates.check'?'Check now':s.id==='updates.install'?'Install':s.id==='reset'?'Reset…':'How…')+'</button>';
+  else if(s.kind==='enum')ctl='<select class="gsel" data-gsel="'+esc(s.id)+'" aria-label="'+esc(s.title)+'">'+(s.choices||[]).map(c=>'<option value="'+esc(c)+'"'+(c===s.value?' selected':'')+'>'+esc((s.labels&&s.labels[c])||c)+'</option>').join('')+'</select>';
+  else if(s.kind==='action')ctl='<button class="btn'+(s.confirm?'':' sel')+'" data-gact="'+esc(s.id)+'">'+esc(s.id==='updates.check'?'Check now':s.id==='updates.install'?'Install':s.id==='reset'?'Reset…':s.id==='layout.reset'?'Reset':'How…')+'</button>';
   return '<div class="feat" data-setting="'+esc(s.id)+'"><div class="ft"><b>'+esc(s.title)+'</b><span>'+esc(s.desc||'')+(s.confirm?' · asks before it changes':'')+'</span></div>'+ctl+'</div>';
+}
+/* ---- Settings: calendar sources (an .ics file path, or a secret link from Google / Outlook; no sign-in) ---- */
+async function drawCalBlock(note){
+  const el=document.getElementById('calblk');if(!el)return;
+  let srcs=[];try{srcs=(await api('/api/calendar/sources')).sources||[]}catch(e){}
+  el.innerHTML=(srcs.length?srcs.map(x=>'<div class="calsrc" data-src="'+esc(x.id)+'"><span class="n"><b>'+esc(x.name)+'</b><small>'+esc(x.hint)+(x.error?' · <span style="color:var(--warn)">'+esc(x.error)+'</span>':x.ok?' · '+x.count+' events':'')+'</small></span><button class="btn" data-calrm="'+esc(x.id)+'" aria-label="Remove calendar '+esc(x.name)+'">Remove</button></div>').join(''):'<div class="lab" style="padding:.6vh 0">No calendar connected yet.</div>')+
+    '<div class="calform"><input id="cal-name" maxlength="40" placeholder="Name (e.g. Work)" aria-label="Calendar name"><input id="cal-val" placeholder="Secret link (https://…) or path to an .ics file" aria-label="Calendar link or .ics file path" autocomplete="off"><button class="btn sel" id="cal-do">Add</button></div>'+
+    '<div class="lab" id="cal-msg" style="text-transform:none;letter-spacing:.04em">'+esc(note||'')+'</div>'+
+    '<details class="sayhelp"><summary>Where do I find the link?</summary><p><b>Google Calendar:</b> Settings, pick the calendar, “Integrate calendar”, copy “Secret address in iCal format”. <b>Outlook.com:</b> Settings, Calendar, Shared calendars, Publish a calendar, copy the ICS link. <b>A file:</b> type the full path of an .ics file on this computer. Treat a secret link like a password: anyone who has it can read the calendar. ATLAS stores it only on this computer and never shows it again after you add it.</p></details>';
+  el.querySelectorAll('[data-calrm]').forEach(b=>b.onclick=async()=>{try{await post('/api/calendar/sources/remove',{id:b.dataset.calrm});loadCalendar(true);drawCalBlock('Removed.')}catch(e){drawCalBlock(e.message)}});
+  document.getElementById('cal-do').onclick=async()=>{const m=document.getElementById('cal-msg');m.textContent='Adding…';
+    try{const j=await post('/api/calendar/sources',{name:document.getElementById('cal-name').value,value:document.getElementById('cal-val').value});loadCalendar(true);drawCalBlock(j.message||'Added.')}catch(e){m.textContent=e.message;m.style.color='var(--warn)'}};
 }
 function renderGeneralTab(){
   const body=document.getElementById('settab');
@@ -1481,8 +1788,9 @@ function renderGeneralTab(){
   let h='',grp='';
   rows.forEach(s=>{if(s.group!==grp){grp=s.group;h+='<div class="setgrp">'+esc(grp)+'</div>'}h+=genRow(s)});
   const ex=SETS.filter(s=>s.examples&&s.examples.length).map(s=>'<li><b>'+esc(s.title)+'</b>: “'+esc(s.examples[0])+'”</li>').join('');
-  body.innerHTML=h+'<div class="prow"><span class="msg" id="gmsg"></span></div><details class="sayhelp"><summary>What can I say or type?</summary><p>Everything on these screens can also be changed by voice or chat. Risky changes (microphone on, switching the AI, add-ons, reset) always ask you to say yes first.</p><ul>'+ex+'</ul></details>';
+  body.innerHTML=h+'<div class="setgrp">Calendars</div><div id="calblk"></div><div class="prow"><span class="msg" id="gmsg"></span></div><details class="sayhelp"><summary>What can I say or type?</summary><p>Everything on these screens can also be changed by voice or chat. Risky changes (microphone on, switching the AI, add-ons, reset) always ask you to say yes first.</p><ul>'+ex+'</ul></details>';
   const msg=t=>{const m=document.getElementById('gmsg');if(m)m.textContent=t||''};
+  drawCalBlock();
   body.querySelectorAll('[data-gset]').forEach(b=>b.onclick=async()=>{const id=b.dataset.gset;const j=await setSetting(id,!b.classList.contains('on'));if(j){msg(j.message||'');renderSettings(true)}});
   body.querySelectorAll('[data-gsel]').forEach(sel=>sel.onchange=async()=>{const j=await setSetting(sel.dataset.gsel,sel.value);if(j){msg(j.message||'');renderSettings(true)}});
   body.querySelectorAll('[data-gact]').forEach(b=>b.onclick=async()=>{
@@ -1518,7 +1826,7 @@ const PROV_INFO={
   ollama:{n:'Local model',s:'Runs on this computer (Ollama)'}};
 async function suStatus(fresh){try{SU.st=await api('/api/setup/status'+(fresh?'?fresh=1':''))}catch(e){}}
 function openSetup(opt){
-  opt=opt||{};SU.open=true;SU.dismissed=false;SU.test=null;SU.err='';SU.showAI=!!opt.ai;SU.autoDone=false;SU.first=!!opt.first;SU.about=false;
+  opt=opt||{};SU.open=true;SU.dismissed=false;SU.test=null;SU.err='';SU.showAI=!!opt.ai;SU.autoDone=false;SU.first=!!opt.first;SU.about=false;SU.addons=false;
   if(SU.job&&SU.job.status!=='running')SU.job=null;
   document.getElementById('setup').classList.add('open');renderSetup();
   suStatus(true).then(()=>{renderSetup();suAutoRun()});
@@ -1548,6 +1856,7 @@ function suPoll(){
 }
 function suView(){
   const st=SU.st,jb=SU.job;
+  if(SU.addons)return 'addons';
   if(SU.about)return 'about';
   if(jb&&jb.status==='running')return 'job';
   if(jb&&jb.status==='error')return 'error';
@@ -1559,8 +1868,8 @@ function suView(){
   return 'ready';
 }
 function suCrumbs(v){
-  const i=(v==='install'||v==='fix'||(v==='job'&&SU.job&&(SU.job.kind==='fix'||SU.job.kind==='install')))?0:(v==='ai'||(v==='job'&&SU.job&&SU.job.kind==='provider'))?1:(v==='about'&&SU.first)?2:(SU.first?1.5:2);
-  const L=SU.first?['1 · Hermes','2 · Your AI','3 · About you']:['1 · Hermes','2 · Your AI','3 · Ready'];
+  const i=(v==='install'||v==='fix'||(v==='job'&&SU.job&&(SU.job.kind==='fix'||SU.job.kind==='install')))?0:(v==='ai'||(v==='job'&&SU.job&&SU.job.kind==='provider'))?1:(v==='about'&&SU.first)?2:(v==='addons')?3:(SU.first?1.5:2);
+  const L=SU.first?['1 · Hermes','2 · Your AI','3 · About you','4 · Add-ons']:['1 · Hermes','2 · Your AI','3 · Ready'];
   return '<div class="crumbs">'+L.map((t,k)=>'<span class="'+(k<i?'done':k===i?'on':'')+'">'+(k<i?'✓ ':'')+t+'</span>').join('')+'</div>';
 }
 function suChecks(jb){
@@ -1625,7 +1934,11 @@ function renderSetup(){
       '<div class="prof"><label for="abassist">Assistant</label><input id="abassist" maxlength="20" placeholder="ATLAS" value="'+esc(ANAME)+'"><label for="abname">Your name</label><input id="abname" maxlength="40" placeholder="What should I call you?" value="'+esc((PROF&&PROF.name)||'')+'">'+
       '<label for="abcity">City</label><input id="abcity" maxlength="80" placeholder="e.g. Austin, Texas (for weather)" value="'+esc((PROF&&PROF.city)||'')+'"></div>'+
       '<details><summary>Favorite sports and teams</summary><div id="pf-sports"></div></details>'+
-      '<div class="row"><button class="btn sel" data-su="aboutsave">Finish</button><button class="btn" data-su="aboutskip">Skip for now</button></div>';
+      '<div class="row"><button class="btn sel" data-su="aboutsave">Next: add-ons</button><button class="btn" data-su="aboutskip">Skip for now</button></div>';
+  }
+  else if(v==='addons'){
+    h='<h4>▸ ADD-ON MODULES</h4>'+suCrumbs(v)+'<p>'+esc(MODS.explain||'Add-on modules are extra programs that give '+A+' new abilities. They run with the same access as '+A+', so a new one never turns on until it has been scanned, second-opinioned by your own AI, and you press Approve.')+'</p><p class="note">Recommended: leave them on. You can switch them off any time in Settings or by saying “turn off add-on modules”.</p>'+
+      '<div class="row"><button class="btn sel" data-su="addonson">Keep add-ons on (recommended)</button><button class="btn" data-su="addonsoff">Turn add-ons off</button></div>';
   }
   box.innerHTML=h;
   if(v==='about'){if(!ED)ED={sports:JSON.parse(JSON.stringify((PROF&&PROF.sports)||[]))};drawSportsEditor()}
@@ -1653,7 +1966,10 @@ async function suAct(a){
       try{const j=await post('/api/profile',body);if(j.assistant)applyAssistant(j.assistant);applyProfile(j.profile)}catch(e){SU.err=e.message;return renderSetup()}
     }
     try{await post('/api/setup/first-run-done',{})}catch(e){}
-    ED=null;SU.first=false;SU.about=false;closeSetup();setCaption(an(),a==='aboutsave'?'All set. Say something!':'Connected. Say something!');return}
+    ED=null;SU.about=false;SU.aboutSaved=(a==='aboutsave');await loadModules();SU.addons=true;return renderSetup()}
+  if(a==='addonson'||a==='addonsoff'){
+    try{if(a==='addonsoff')await post('/api/settings/addons.enabled',{value:false,confirmed:true});await post('/api/modules/ack',{});await loadModules();await loadFeatures()}catch(e){}
+    SU.addons=false;SU.first=false;closeSetup();setCaption(an(),a==='addonsoff'?'Add-ons are off. Say something!':(SU.aboutSaved?'All set. Say something!':'Connected. Say something!'));return}
   if(a==='test'){SU.testing=true;SU.test=null;renderSetup();
     try{const j=await post('/api/setup/test',{});SU.test=j.result}catch(e){SU.test={ok:false,error:e.message}}
     SU.testing=false;await suStatus(true);return renderSetup()}
@@ -1684,7 +2000,7 @@ function renderAiTab(){
   await pollHealth();setOrb('idle');if(BR.online){loadSettings();loadHistory();loadFeatures();startEvents();loadUpdate();setInterval(loadUpdate,600000)}
   setInterval(pollHealth,4000);setInterval(pollSystem,2000);pollSystem();
 })();
-window.__hud={openSetup,SU,ATLAS,openMod,FT,ftUpdate,askHermes,look,voiceToggle,CONV,convIsEnd,closeSetup,setSpeak:v=>{speakOn=!!v},speakOn:()=>speakOn,an:()=>an(),prof:()=>PROF,sets:()=>SETS,state:()=>({online:BR.online,rec:{speech:REC.speech,conv:REC.conv,lvl:lvl,state:REC.rec&&REC.rec.state},orb:orbMode,msgs:MSGS.slice(),caption:cap.textContent,captionErr:cap.classList.contains('err')})};   /* read-only snapshot for the dev tests */
+window.__hud={rems:()=>REMS,scene:()=>({scene:orbScene,mode:orbMode,on:sceneOn,skin:document.documentElement.dataset.skin}),setScene,sceneFor,loadReminders,openModules,MODS,loadModules,cal:()=>CALS,brief:()=>BRIEF,sc:()=>SC,loadCalendar,loadScores,loadBrief,morningBrief,openSetup,SU,ATLAS,openMod,FT,ftUpdate,askHermes,look,voiceToggle,CONV,convIsEnd,closeSetup,setSpeak:v=>{speakOn=!!v},speakOn:()=>speakOn,an:()=>an(),prof:()=>PROF,sets:()=>SETS,state:()=>({online:BR.online,rec:{speech:REC.speech,conv:REC.conv,lvl:lvl,state:REC.rec&&REC.rec.state},orb:orbMode,msgs:MSGS.slice(),caption:cap.textContent,captionErr:cap.classList.contains('err')})};   /* read-only snapshot for the dev tests */
 })();
 </script>
 </body>

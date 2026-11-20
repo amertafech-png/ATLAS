@@ -1,7 +1,7 @@
 """Build the ATLAS release assets into dist/ :
    ATLAS-Setup.bat (Windows), ATLAS-Setup.command (macOS), SHA256SUMS, RELEASE-NOTES-v<version>.md (template)
 Version + repo come from bridge/atlas_meta.py.  See RELEASING.md."""
-import base64, hashlib, io, os, re, shutil, sys, tarfile, zipfile
+import base64, hashlib, io, json, os, re, shutil, sys, tarfile, zipfile
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(ROOT, 'bridge'))
 import atlas_meta
@@ -13,13 +13,29 @@ FILES = {  # archive path -> source path
     'bridge/bridge.py': 'bridge/bridge.py', 'bridge/config.json': 'bridge/config.json',
     'bridge/requirements.txt': 'bridge/requirements.txt',
     'bridge/atlas_meta.py': 'bridge/atlas_meta.py', 'bridge/atlas_update.py': 'bridge/atlas_update.py',
-    'bridge/atlas_features.py': 'bridge/atlas_features.py', 'bridge/atlas_settings.py': 'bridge/atlas_settings.py', 'bridge/atlas_hermes.py': 'bridge/atlas_hermes.py', 'bridge/modules/_example.py': 'bridge/modules/_example.py',
+    'bridge/atlas_features.py': 'bridge/atlas_features.py', 'bridge/atlas_settings.py': 'bridge/atlas_settings.py', 'bridge/atlas_hermes.py': 'bridge/atlas_hermes.py',
+    'bridge/atlas_layout.py': 'bridge/atlas_layout.py', 'bridge/atlas_calendar.py': 'bridge/atlas_calendar.py', 'bridge/atlas_scores.py': 'bridge/atlas_scores.py', 'bridge/atlas_info.py': 'bridge/atlas_info.py', 'bridge/atlas_reminders.py': 'bridge/atlas_reminders.py', 'bridge/atlas_launch.py': 'bridge/atlas_launch.py', 'bridge/modules/computer_control.py': 'bridge/modules/computer_control.py', 'bridge/atlas_modules.py': 'bridge/atlas_modules.py', 'bridge/modules/MANIFEST.json': 'bridge/modules/MANIFEST.json', 'bridge/modules/_example.py': 'bridge/modules/_example.py',
     'bridge/modules/wake_word.py': 'bridge/modules/wake_word.py', 'bridge/modules/wake_word.js': 'bridge/modules/wake_word.js',
     'win/ATLAS.ps1': 'src/win/ATLAS.ps1', 
     'mac/atlas-launch.sh': 'src/mac/atlas-launch.sh', 'mac/ui-server.pl': 'src/mac/ui-server.pl',
     'installer/ui.html': 'src/installer/ui.html',
     'GUIDE.md': 'docs/GUIDE.md', 'LICENSE': 'LICENSE',
 }
+# Add-on modules that ship with ATLAS are trusted only while their files match bridge/modules/MANIFEST.json (see atlas_modules.py): regenerate it, and make sure every shipped module is packaged.
+sys.path.insert(0, os.path.join(ROOT, 'bridge'))
+import atlas_modules
+_mdir = os.path.join(ROOT, 'bridge', 'modules')
+_man = {}
+for _f in sorted(os.listdir(_mdir)):
+    if _f.endswith('.py') and not _f.startswith('_'):
+        _js = os.path.join(_mdir, _f[:-3] + '.js')
+        _man[_f[:-3]] = atlas_modules.sha_of(open(os.path.join(_mdir, _f), 'rb').read(), open(_js, 'rb').read() if os.path.exists(_js) else None)
+    if (_f.endswith('.py') or _f.endswith('.js')) and not _f.startswith('_') and f'bridge/modules/{_f}' not in FILES:
+        sys.exit('build: bridge/modules/' + _f + ' is not listed in FILES (it would be missing from the installers)')
+_mtxt = json.dumps({'note': 'SHA-256 of each add-on module that ships with ATLAS (python + optional .js). Written by tools/build.py; a module whose files differ from this needs the user\'s approval before it runs.', 'modules': _man}, indent=1) + '\n'
+if not os.path.exists(os.path.join(_mdir, 'MANIFEST.json')) or open(os.path.join(_mdir, 'MANIFEST.json'), encoding='utf-8').read() != _mtxt:
+    open(os.path.join(_mdir, 'MANIFEST.json'), 'w', encoding='utf-8', newline='\n').write(_mtxt)
+    print('module manifest updated:', ', '.join(_man))
 _missing = [f for f in sorted(os.listdir(os.path.join(ROOT, 'bridge'))) if f.endswith('.py') and f'bridge/{f}' not in FILES]
 if _missing: sys.exit('build: bridge modules not listed in FILES (they would be missing from the installers): ' + ', '.join(_missing))
 # The Windows shortcut icon is assets/atlas.ico: it must be a valid multi-size .ico (16/24/32/48/64/256), or shortcuts show a blank page.

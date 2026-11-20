@@ -30,6 +30,7 @@ import tempfile
 import threading
 import time
 import wave
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import psutil
@@ -172,9 +173,14 @@ def load_config():
 
 CFG = load_config()
 
+import atlas_calendar  # noqa: E402  (calendar panel: local .ics files and secret links)
 import atlas_features  # noqa: E402  (feature framework, see atlas_features.py)
 import atlas_hermes  # noqa: E402  (finds / installs / connects Hermes, see atlas_hermes.py)
 import atlas_meta  # noqa: E402
+import atlas_info  # noqa: E402
+import atlas_modules  # noqa: E402  (add-on safety: approval, red-flag scan, AI second opinion)  (calendar / score questions and the daily brief)
+import atlas_reminders  # noqa: E402  (spoken reminders and timers)
+import atlas_scores  # noqa: E402  (live scores from ESPN's public scoreboard)
 import atlas_settings  # noqa: E402  (settings registry + local voice/chat intent handler)
 import atlas_update  # noqa: E402
 VERSION = atlas_meta.VERSION
@@ -374,16 +380,16 @@ def _content_text(content):
     return ""
 
 
-async def hermes_api(user_content):
-    """user_content: str or OpenAI content-part list. Returns reply text."""
+async def hermes_api(user_content, session_id=None, system=None):
+    """user_content: str or OpenAI content-part list. Returns reply text.  session_id/system: a separate one-off conversation (used for add-on reviews)."""
     h = CFG["hermes"]
     key = resolve_api_key()
     if not key:
         raise HermesError("Hermes isn't connected yet. Press Fix it and I'll set it up.", 503, "setup")
     url = HM.api_url() + "/v1/chat/completions"
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json",
-               "X-Hermes-Session-Id": STATE["session_id"]}
-    sysmsg = system_prompt()
+               "X-Hermes-Session-Id": session_id or STATE["session_id"]}
+    sysmsg = system or system_prompt()
     res = None
     for attempt in (1, 2):
         body = {"model": h["model"], "stream": False,
@@ -425,20 +431,20 @@ async def hermes_api(user_content):
     raise HermesError(res["error"] if res.get("error") else f"Hermes API error {code}", 502)
 
 
-async def hermes_cli(prompt_text, image_path=None):
+async def hermes_cli(prompt_text, image_path=None, plain=False):
     """Fallback: `hermes -z "<prompt>"`. Continuity is approximated by replaying recent turns in the prompt."""
     h = CFG["hermes"]
     exe = HM.find_cli() or h["cli_command"]
-    turns = [t for t in STATE["history"] if t.get("kind") in ("chat", "look")][-6:]
+    turns = [] if plain else [t for t in STATE["history"] if t.get("kind") in ("chat", "look")][-6:]
     uname = (CFG.get('profile') or {}).get('name') or 'User'
     ctx = "".join(f"{uname if t['role']=='user' else 'Hermes'}: {t['text']}\n" for t in turns)
-    prompt = system_prompt() + "\n\n"
+    prompt = ("" if plain else system_prompt() + "\n\n")
     if ctx:
         prompt += "Recent conversation:\n" + ctx + "\n"
     if image_path:
         prompt += (f"A webcam frame from the user's desk was saved at: {image_path}\n"
                    "Use your vision_analyze tool on that file to answer.\n")
-    prompt += uname + ": " + prompt_text
+    prompt += prompt_text if plain else uname + ": " + prompt_text
     try:
         proc = await asyncio.create_subprocess_exec(exe, "-z", prompt, stdout=asyncio.subprocess.PIPE,
                                                     stderr=asyncio.subprocess.PIPE)
@@ -457,6 +463,15 @@ async def hermes_text(text):
         if CFG["mode"] == "cli":
             return await hermes_cli(text)
         return await hermes_api(text)
+
+
+async def hermes_review(text):
+    """A one-off question to the user's own AI that is NOT part of their chat history (add-on reviews, module writing)."""
+    async with _hermes_lock:
+        if CFG["mode"] == "cli":
+            return await hermes_cli(text, plain=True)
+        return await hermes_api(text, session_id="atlas-review-" + str(int(time.time())),
+                                system="You are a careful, plain-spoken reviewer. Answer exactly in the format you are asked for. Do not use tools.")
 
 
 async def hermes_look(jpeg_bytes, question):
@@ -822,6 +837,7 @@ async def h_health(request):
         "tts": {"voice": CFG["tts"]["voice"], "engine": tts.engine, "status": tts.status, "error": tts.error},
         "gpu": gpu_stats() is not None,
         "profile": CFG.get("profile") or {},
+        "addons": MODULES.summary(),
         "assistant": {"name": assistant_name(), "wake_phrase": (CFG.get("assistant") or {}).get("wake_phrase") or "Hey " + assistant_name()},
     })
 
@@ -950,14 +966,14 @@ async def h_chat(request):
     t0 = time.time()
     add_history("user", text, body.get("kind", "chat"))
     try:                                   # settings by voice/chat ("turn off wake word", "set my city to Dallas") are handled here, never sent to Hermes
-        local = await SETTINGS.handle(text)
+        local = await local_intent(text)
     except Exception as e:  # noqa
-        print("[bridge] settings intent failed:", type(e).__name__, e, flush=True)
+        print("[bridge] local intent failed:", type(e).__name__, e, flush=True)
         local = None
     if local:
         add_history("assistant", local["reply"])
         return web.json_response({"ok": True, "reply": local["reply"], "ms": int((time.time() - t0) * 1000), "session_id": STATE["session_id"],
-                                  "local": True, "changed": local["changed"], "ui": local["ui"], "pending": local["pending"],
+                                  "local": True, "changed": local["changed"], "ui": local["ui"], "pending": local["pending"], "brief": local.get("brief"),
                                   "prefs": SETTINGS.prefs_view(), "profile": CFG.get("profile") or {}, "assistant": CFG.get("assistant")})
     try:
         reply = await hermes_text(text)
@@ -1030,7 +1046,9 @@ async def h_speak(request):
 
 
 # ---------------------------------------------------------------- feature framework endpoints
-FEATURES = atlas_features.Features(HERE, DATA_DIR, CFG, hermes_text, DATA_DIR / "config.json")
+MODULES = atlas_modules.Modules(CFG, save_user_config, HERE, DATA_DIR, ask=hermes_review, assistant_name=assistant_name, provider_label=lambda: (HM.provider_label()[0] if HM else ""))
+FEATURES = atlas_features.Features(HERE, DATA_DIR, CFG, hermes_text, DATA_DIR / "config.json", gate=MODULES)
+MODULES.features = FEATURES
 
 
 async def h_features(request):
@@ -1050,7 +1068,109 @@ async def h_feature_set(request):
         await FEATURES.set_enabled(fid, bool(body.get("enabled")), body.get("settings"))
     except KeyError:
         return jerr("Unknown feature.", 404)
+    except PermissionError as e:
+        return web.json_response({"ok": False, "error": str(e), "features": FEATURES.describe()}, status=403)
     return web.json_response({"ok": True, "features": FEATURES.describe()})
+
+
+def _mods_view():
+    return {"ok": True, **MODULES.summary(), "explain": atlas_modules.EXPLAIN, "modules": MODULES.list(), "features": FEATURES.describe()}
+
+
+async def h_modules(request):
+    return web.json_response(_mods_view())
+
+
+async def h_modules_ack(request):
+    MODULES.set_explained()
+    return web.json_response(_mods_view())
+
+
+async def h_module_review(request):
+    fid = request.match_info["fid"]
+    try:
+        if request.method == "POST":
+            await MODULES.second_opinion(fid)         # asks the user's own AI; always ends with a recorded outcome
+        return web.json_response({"ok": True, **MODULES.review_view(fid)})
+    except KeyError:
+        return jerr("No such module.", 404)
+
+
+async def h_module_decide(request):
+    fid = request.match_info["fid"]
+    act = request.match_info["act"]
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        if act == "approve":
+            MODULES.approve(fid, override=bool(body.get("override")))
+            FEATURES.discover()
+            if body.get("enable", True):
+                await FEATURES.set_enabled(fid, True)
+        elif act == "reject":
+            MODULES.reject(fid)
+            await FEATURES.set_enabled(fid, False)
+        else:
+            return jerr("Unknown action.", 404)
+    except KeyError:
+        return jerr("No such module.", 404)
+    except (ValueError, PermissionError) as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=409)
+    FEATURES.emit("features", features=FEATURES.describe())
+    return web.json_response(_mods_view())
+
+
+def _rem_view():
+    now = time.time()
+    tz = INFO.now().tzinfo
+    return {"ok": True, "now": now, "items": [atlas_reminders.view(i, now, tz) for i in REMINDERS.active()], "alerts": [atlas_reminders.view(i, now, tz) for i in REMINDERS.alerts()],
+            "chime": bool((CFG.get("prefs") or {}).get("reminder_chime", True))}
+
+
+async def h_reminders(request):
+    return web.json_response(_rem_view())
+
+
+async def h_reminder_act(request):
+    rid, act = request.match_info["rid"], request.match_info["act"]
+    ok = REMINDERS.cancel(rid) if act == "cancel" else REMINDERS.dismiss(rid)
+    FEATURES.emit("reminders")
+    return web.json_response({**_rem_view(), "ok": ok})
+
+
+async def h_reminder_quick(request):
+    """The little form on the Reminders panel: 'call Mike at 3pm' or '10 minute timer'."""
+    try:
+        body = await request.json()
+    except Exception:
+        return jerr("Send JSON.", 400)
+    text = str(body.get("text") or "").strip()[:200]
+    if not text:
+        return jerr("Type what to remind you about, or a timer length.", 400)
+    probe = text if re.search(r"\btimer\b", text, re.I) else "remind me " + (text if re.match(r"(?i)to |that ", text) else "to " + text)
+    r = await REMIND.handle(probe)
+    FEATURES.emit("reminders")
+    return web.json_response({**_rem_view(), "message": (r or {}).get("reply", ""), "pending": bool((r or {}).get("pending"))})
+
+
+async def reminder_loop():
+    """Every second: deliver what is due to the open HUD (chime + speech there).  Nothing is delivered while no HUD is open; it arrives, marked late, when one opens."""
+    while True:
+        try:
+            await asyncio.sleep(1)
+            due = REMINDERS.due(has_clients=bool(FEATURES.clients))
+            for it in due:
+                tz = INFO.now().tzinfo
+                FEATURES.emit("reminder", **atlas_reminders.alert_payload(it, time.time(), tz))
+                REMINDERS.mark_fired(it["id"])
+            if due:
+                FEATURES.emit("reminders")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa
+            print("[bridge] reminder loop:", type(e).__name__, e, flush=True)
 
 
 async def h_events(request):
@@ -1093,7 +1213,7 @@ async def h_feature_http(request):
 async def h_feature_js(request):
     fid = request.match_info["fid"]
     p = FEATURES.find(fid, ".js")
-    if not p or not FEATURES.enabled(fid):
+    if not p or not FEATURES.enabled(fid) or not FEATURES.permitted(fid):
         return web.Response(status=404, text="no ui")
     return web.Response(body=p.read_bytes(), content_type="application/javascript", headers={"Cache-Control": "no-store"})
 
@@ -1101,9 +1221,13 @@ async def h_feature_js(request):
 async def _on_startup(app):
     threading.Thread(target=_hermes_boot, daemon=True, name="atlas-hermes-boot").start()
     await FEATURES.start_enabled()
+    app["reminder_task"] = asyncio.create_task(reminder_loop())
 
 
 async def _on_cleanup(app):
+    t = app.get("reminder_task")
+    if t:
+        t.cancel()
     await FEATURES.stop_all()
 
 
@@ -1142,6 +1266,18 @@ class SettingsEnv:
     features = FEATURES
     updater = UPDATER
     sport_names = SPORT_NAMES
+
+    def calendar_sources(self):
+        return CALENDAR.public_sources()
+
+    modules = MODULES
+
+    def addons_running(self):
+        return [f["title"] for f in FEATURES.describe() if f["status"] == "running"]
+
+    async def set_addons(self, on):
+        MODULES.set_master(on)
+        await FEATURES.master_changed()
 
     def save(self, patch):
         save_user_config(patch)
@@ -1195,6 +1331,133 @@ class SettingsEnv:
 
 
 SETTINGS = atlas_settings.Settings(SettingsEnv())
+CALENDAR = atlas_calendar.Calendar(CFG, save_user_config, lambda: (CFG.get("profile") or {}).get("timezone") or "")
+SCORES = atlas_scores.Scores()
+
+
+class InfoEnv:
+    """What atlas_info.py (calendar / scores / brief) may touch."""
+    cfg = CFG
+    calendar = CALENDAR
+    scores = SCORES
+    weather = None            # None = the real Open-Meteo lookup
+
+    def assistant_name(self):
+        return assistant_name()
+
+    def reminders_upcoming(self):
+        """Reminders still to come today, as short phrases for the daily brief."""
+        now = INFO.now()
+        end = now.replace(hour=23, minute=59, second=59).timestamp()
+        return ["%s at %s" % (atlas_reminders.second_person(i["text"]), atlas_reminders.say_clock(datetime.fromtimestamp(i["due"], now.tzinfo)))
+                for i in REMINDERS.active() if i["kind"] == "reminder" and i["due"] <= end]
+
+
+class ModuleIntents:
+    """Lets an enabled add-on answer a voice/chat request (e.g. computer_control: "open Steam").  Tried last, after every built-in."""
+    async def handle(self, text):
+        return await FEATURES.run_intents(text)
+
+    @property
+    def pending(self):
+        return FEATURES.pending_intent()
+
+    @pending.setter
+    def pending(self, v):
+        if not v:
+            FEATURES.clear_pending_intent()
+
+
+INFO = atlas_info.Info(InfoEnv())
+REMINDERS = atlas_reminders.Store(DATA_DIR / "reminders.json")
+REMIND = atlas_reminders.Reminders(REMINDERS, lambda: INFO.now(), assistant_name)
+HANDLERS = [("modules", MODULES), ("reminders", REMIND), ("settings", SETTINGS), ("info", INFO), ("addon-intents", ModuleIntents())]       # asked in this order; the first that recognises the request answers (nothing here reaches Hermes)
+
+
+async def local_intent(text):
+    """Voice/chat requests ATLAS handles itself.  Returns None (send it to Hermes) or {reply, changed, ui, pending, ...}."""
+    for name, h in HANDLERS:
+        try:
+            r = await h.handle(text)
+        except Exception as e:  # noqa
+            print("[bridge] %s intent failed: %s %s" % (name, type(e).__name__, e), flush=True)
+            r = None
+        if r:
+            for other_name, o in HANDLERS:               # a request for one handler cancels another's pending yes/no
+                if o is not h and getattr(o, "pending", None):
+                    o.pending = None
+            return r
+    return None
+
+
+def _iso(d):
+    return d.isoformat(timespec="minutes") if hasattr(d, "isoformat") else d
+
+
+async def h_calendar(request):
+    loop = asyncio.get_running_loop()
+    try:
+        days = max(1, min(31, int(request.query.get("days", "7"))))
+    except ValueError:
+        days = 7
+    def work():
+        now = INFO.now()
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        evs = CALENDAR.events(start, start + timedelta(days=days), force=request.query.get("refresh") == "1")
+        return [{"title": e["title"], "start": _iso(e["start"]), "end": _iso(e["end"]), "all_day": e["all_day"], "location": e["location"], "source": e["source"]} for e in evs if e["all_day"] or e["end"] > now or e["start"].date() != now.date()], now
+    evs, now = await loop.run_in_executor(None, work)
+    return web.json_response({"ok": True, "events": evs, "now": _iso(now), "sources": CALENDAR.public_sources(), "configured": bool(CALENDAR.sources())})
+
+
+async def h_calendar_sources(request):
+    if request.method == "GET":
+        return web.json_response({"ok": True, "sources": CALENDAR.public_sources()})
+    try:
+        body = await request.json()
+    except Exception:
+        return jerr("Send JSON.", 400)
+    loop = asyncio.get_running_loop()
+    if request.path.endswith("/remove"):
+        ok = CALENDAR.remove(str(body.get("id") or body.get("name") or ""))
+        return web.json_response({"ok": ok, "sources": CALENDAR.public_sources(), **({} if ok else {"error": "No such calendar."})}, status=200 if ok else 404)
+    try:
+        sid = CALENDAR.add(body.get("name"), body.get("value"))
+    except ValueError as e:
+        return jerr(str(e), 400)
+    src = next((x for x in CALENDAR.sources() if x["id"] == sid), None)
+    try:
+        await loop.run_in_executor(None, CALENDAR.load, src, True)           # fetch once now so a wrong link is reported right away
+    except Exception:  # noqa
+        pass
+    pub = next((x for x in CALENDAR.public_sources() if x["id"] == sid), {})
+    return web.json_response({"ok": True, "id": sid, "source": pub, "sources": CALENDAR.public_sources(),
+                              "message": ("Added. I found %d events." % pub.get("count", 0)) if pub.get("ok") else ("Added, but I couldn't read it yet: %s" % (pub.get("error") or "unknown problem"))})
+
+
+async def h_scores(request):
+    loop = asyncio.get_running_loop()
+    r = await loop.run_in_executor(None, INFO.scores)
+    return web.json_response({"ok": True, "live": INFO.live_scores_on(), "followed": bool((CFG.get("profile") or {}).get("sports")), **r})
+
+
+async def h_brief(request):
+    loop = asyncio.get_running_loop()
+    b = await loop.run_in_executor(None, INFO.brief)
+    return web.json_response({"ok": True, **b})
+
+
+async def h_brief_morning(request):
+    """The HUD asks once on open: is the automatic morning brief due?  (on, not yet given today, before 1 pm)  Marks it given."""
+    prefs = CFG.setdefault("prefs", {})
+    now = INFO.now()
+    today = now.date().isoformat()
+    if not prefs.get("brief_morning") or prefs.get("brief_last") == today or now.hour >= 13 or now.hour < 4:
+        return web.json_response({"ok": True, "due": False})
+    prefs["brief_last"] = today
+    save_user_config({"prefs": {"brief_last": today}})
+    loop = asyncio.get_running_loop()
+    b = await loop.run_in_executor(None, INFO.brief)
+    return web.json_response({"ok": True, "due": True, **b})
 
 
 async def h_settings(request):
@@ -1303,6 +1566,12 @@ def make_app():
         # feature framework
         web.get("/api/features", h_features), web.post("/api/features/{fid}", h_feature_set),
         web.get("/api/profile", h_profile_get), web.post("/api/profile", h_profile_set),
+        web.get("/api/calendar", h_calendar), web.get("/api/calendar/sources", h_calendar_sources), web.post("/api/calendar/sources", h_calendar_sources), web.post("/api/calendar/sources/remove", h_calendar_sources),
+        web.get("/api/reminders", h_reminders), web.post("/api/reminders/quick", h_reminder_quick), web.post("/api/reminders/{rid:[a-f0-9]+}/{act:cancel|dismiss}", h_reminder_act),
+        web.get("/api/scores", h_scores), web.get("/api/brief", h_brief), web.post("/api/brief/morning", h_brief_morning),
+        web.get("/api/modules", h_modules), web.post("/api/modules/ack", h_modules_ack),
+        web.get("/api/modules/{fid:[a-z0-9_]+}/review", h_module_review), web.post("/api/modules/{fid:[a-z0-9_]+}/opinion", h_module_review),
+        web.post("/api/modules/{fid:[a-z0-9_]+}/{act:approve|reject}", h_module_decide),
         web.get("/api/settings", h_settings), web.post("/api/settings/{sid}", h_setting_set), web.post("/api/settings/{sid}/run", h_setting_run),
         web.get("/api/update", h_update), web.post("/api/update/check", h_update_check),
         web.post("/api/update/install", h_update_install), web.post("/api/update/settings", h_update_settings),

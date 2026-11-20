@@ -49,7 +49,7 @@ Only what is missing on your computer. The installer's **Options** page lists ea
 | What | For | When | Size | From | Optional? |
 |---|---|---|---|---|---|
 | Python 3.11+ | runs ATLAS | install, if not found | ~30 MB | winget / python.org (Windows), Homebrew / python.org (macOS) | no |
-| ATLAS's Python packages (aiohttp, psutil, faster-whisper, av, piper-tts) | bridge, speech | install | ~500 MB | PyPI | no |
+| ATLAS's Python packages (aiohttp, psutil, faster-whisper, av, piper-tts, tzdata) | bridge, speech | install | ~500 MB | PyPI | no |
 | Hermes Agent (+ its own dependencies) | your AI's brain | install or first run, if not found | ~1 GB | `hermes-agent.nousresearch.com` (Hermes' official installer) | skip if you already have it |
 | Whisper `base` speech model | voice input | install or first use | ~150 MB | Hugging Face | needed for voice |
 | Piper voice `en_GB-alan-medium` | spoken replies | install or first use | ~60 MB | Hugging Face | yes (macOS can use its own voice) |
@@ -58,7 +58,7 @@ Only what is missing on your computer. The installer's **Options** page lists ea
 | Ollama + a local model | a free local AI | only if you tick **Install Ollama** on the Options page (default off) or later pick a local model | Ollama ~1.9 GB (Windows) / ~230 MB (macOS), models 2-10+ GB | `ollama.com` | yes |
 | ATLAS updates | new versions | update check about every 12 h; you click Update | ~1.3 MB | GitHub Releases (checksum-verified) | yes |
 
-ATLAS uses the Edge/Chrome already on your computer for its window (nothing is installed for that). Apart from the downloads above, the weather tile calls `open-meteo.com`, and Hermes talks to the AI provider you picked. **Nothing else is sent anywhere.**
+ATLAS uses the Edge/Chrome already on your computer for its window (nothing is installed for that). Apart from the downloads above, the weather tile calls `open-meteo.com`, live scores (if you follow teams and leave them on) call ESPN's public scoreboard `site.api.espn.com`, a calendar link calls only the address you gave it, and Hermes talks to the AI provider you picked. **Nothing else is sent anywhere.**
 
 ## What it does
 * **Talk to it:** push-to-talk (Space), local speech recognition (faster-whisper) and a local voice (Piper; macOS `say` as a fallback).
@@ -69,7 +69,13 @@ ATLAS uses the Edge/Chrome already on your computer for its window (nothing is i
 * **Change any setting by voice or chat:** "turn off wake word", "mute", "turn off conversation mode", "change your name to Nova", "set my city to Dallas", "remove soccer", "stop following Juventus", "hide the weather panel", "what are my settings". Risky changes (microphone on, add-ons, switching the AI, reset) ask first. See [GUIDE](docs/GUIDE.md#settings-by-voice-or-chat).
 * **Updates itself** (with your click): an *Update* button appears when a new release is published; downloads are checked against a SHA-256 before running.
 * **Wake word (optional, off by default):** turn it on in Settings -> Features and just say **"Hey ATLAS"** (or "Hey <the name you gave it>") - fully offline, no account or key. See [GUIDE](docs/GUIDE.md#wake-word).
-* **More feature switches** (Settings): daily brief, reminders, computer control, hand gestures and phone access are planned as optional modules.
+* **Swappable panels:** choose what each of the six panel slots shows (Settings -> Panel layout, or "replace the scanner with my calendar"). ![Slot picker](docs/settings-slot-picker.png)
+* **Calendar, live scores and a daily brief:** a Calendar panel from an .ics file or a secret link (no sign-in), live ESPN scores for your teams, and "give me my brief" for weather + calendar + games + reminders. ![Calendar, sports and brief](docs/panels-calendar-sports-brief.png)
+* **Reminders and timers by voice:** "remind me at 3 to call Mike", "set a 10 minute timer", "what reminders do I have", "cancel the timer". Saved across restarts, chime plus spoken alert. ![Reminders](docs/reminders-panel.png)
+* **Add-on modules with a safety check:** one master switch; a new or changed add-on never runs until you approve it after a plain-words risk notice, a red-flag scan and an AI second opinion. ![Approval](docs/module-approval.png)
+* **Computer control (add-on):** "open Steam", "launch Hades" - opens only what it found installed (Steam, Epic, Start Menu / Applications), asks first by default, cannot run commands. ![Launch confirm](docs/launch-confirm.png)
+* **Skins and task animations:** cyan, ember, violet or emerald, and a centre that changes for thinking, searching, weather and music. ![Skins](docs/skins.png)
+* **Still planned as optional modules:** hand gestures and phone (Telegram) access.
 
 * **Made for you:** name your assistant (it ships as ATLAS; rename it to anything, 1-20 characters), and tell it your name, city, favorite sports and teams (installer or Settings). Weather and the globe follow your city (free Open-Meteo, no key). The Sports tile groups your teams by sport and can ask Hermes for the latest result on demand - there is no live score feed yet, and ATLAS never invents scores.
 

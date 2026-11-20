@@ -40,6 +40,30 @@ jobs:
       - name: Settings registry + voice/chat intents (pure Python, no network)
         run: python bridge/dev/test_settings.py
 
+      - name: Calendar, live scores, daily brief (pure Python, no network)
+        run: |
+          python bridge/dev/test_calendar.py
+          python bridge/dev/test_scores.py
+          python bridge/dev/test_info.py
+
+      - name: Add-on module scanner, approval and trust model (pure Python)
+        run: python bridge/dev/test_modules.py
+
+      - name: Spoken reminders and timers (pure Python)
+        run: python bridge/dev/test_reminders.py
+
+      - name: App and game launcher - scanners, matching, allowlist (pure Python, nothing is launched)
+        run: python bridge/dev/test_launch.py
+
+      - name: Shipped module MANIFEST is up to date (tools/build.py must not change it)
+        run: |
+          set -euo pipefail
+          python tools/build.py > /dev/null
+          if ! git diff --exit-code -- bridge/modules/MANIFEST.json; then
+            echo "bridge/modules/MANIFEST.json is stale: run python tools/build.py and commit it" >&2
+            exit 1
+          fi
+
       - name: JavaScript lint (const reassignment etc.)
         run: bash tools/check-js.sh
 

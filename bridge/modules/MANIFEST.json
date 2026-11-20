@@ -1,0 +1,7 @@
+{
+ "note": "SHA-256 of each add-on module that ships with ATLAS (python + optional .js). Written by tools/build.py; a module whose files differ from this needs the user's approval before it runs.",
+ "modules": {
+  "computer_control": "ef32e5bf50b626610687e7bad0760e0ae38467bd2780f2d2118044a36c5abd64",
+  "wake_word": "9722f3c65b01ad79066e902cb9a12f8a3cc47a055b682318a69645fa5ae0bc68"
+ }
+}
