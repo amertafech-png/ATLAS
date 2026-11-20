@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Fake Hermes API server for testing the bridge/HUD without Hermes (OpenAI-compatible subset).
+Run:  python mock_hermes.py   (listens on 127.0.0.1:8642, key: test-key-0123456789abcdef)"""
+import base64, json, sys, time
+from aiohttp import web
+
+KEY = "test-key-0123456789abcdef"
+SESSIONS = {}
+
+
+async def health(_):
+    return web.json_response({"status": "ok", "platform": "hermes-agent-mock"})
+
+
+async def chat(req):
+    if req.headers.get("Authorization") != f"Bearer {KEY}":
+        return web.json_response({"error": {"message": "Invalid API key"}}, status=401)
+    body = await req.json()
+    sid = req.headers.get("X-Hermes-Session-Id", "none")
+    turns = SESSIONS.setdefault(sid, [])
+    user = body["messages"][-1]["content"]
+    has_sys = any(m["role"] == "system" for m in body["messages"])
+    text, img = "", None
+    if isinstance(user, list):
+        for p in user:
+            if p.get("type") == "text":
+                text += p["text"]
+            if p.get("type") == "image_url":
+                u = p["image_url"]["url"]
+                img = len(base64.b64decode(u.split(",", 1)[1])) if u.startswith("data:image") else -1
+    else:
+        text = user
+    turns.append(text)
+    low = text.lower()
+    if img:
+        reply = f"Mock vision: I received a {img // 1024} kilobyte webcam frame. In the real setup I would describe what is on your desk."
+    elif "weather" in low:
+        reply = "Mock Hermes here. In the real setup I would check the live forecast for your city and tell you."
+    elif "remember" in low or "earlier" in low or "before" in low:
+        reply = f"We are on turn {len(turns)} of this session. Your first message was: {turns[0][:60]}"
+    else:
+        reply = f"Mock Hermes heard: {text[:120]}. This is turn {len(turns)} of session {sid}."
+    await __import__("asyncio").sleep(0.8)
+    return web.json_response({
+        "id": "chatcmpl-mock", "object": "chat.completion", "created": int(time.time()), "model": "hermes-agent",
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}],
+        "mock": {"system_prompt_seen": has_sys, "session": sid}}, headers={"X-Hermes-Session-Id": sid})
+
+
+app = web.Application()
+app.add_routes([web.get("/health", health), web.post("/v1/chat/completions", chat)])
+if __name__ == "__main__":
+    web.run_app(app, host="127.0.0.1", port=int(sys.argv[1]) if len(sys.argv) > 1 else 8642, print=None)

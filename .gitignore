@@ -1,0 +1,14 @@
+# build output
+dist/
+__pycache__/
+*.pyc
+.venv/
+# local state / models
+state.json
+voices/
+# development leftovers (not part of the project)
+index-v1.html
+index-v2.html
+cyber-ref.png
+preview*.png
+*.zip
