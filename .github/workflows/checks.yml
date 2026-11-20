@@ -1,0 +1,82 @@
+# bridge/dev/test_update.py is not run: it opens a local HTTP server and reads
+# installer files from dist/ (gitignored), so it is not a headless offline check.
+
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python 3.12
+        run: python -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) else 1)'
+
+      - name: Shell syntax
+        run: |
+          set -euo pipefail
+          files=(src/mac/*.sh)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no shell scripts under src/mac" >&2
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            bash -n "$f"
+          done
+
+      - name: PowerShell parse
+        run: |
+          set -euo pipefail
+          if ! command -v pwsh >/dev/null 2>&1; then
+            . /etc/os-release
+            curl -fsSL -o /tmp/packages-microsoft-prod.deb "https://packages.microsoft.com/config/ubuntu/${VERSION_ID}/packages-microsoft-prod.deb"
+            sudo dpkg -i /tmp/packages-microsoft-prod.deb
+            sudo apt-get update
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y powershell
+          fi
+          pwsh -NoProfile -NonInteractive -Command '
+            $ErrorActionPreference = "Stop"
+            $files = @(Get-ChildItem -LiteralPath "src/win" -Filter "*.ps1")
+            if ($files.Count -lt 1) { throw "no PowerShell files under src/win" }
+            foreach ($f in $files) {
+              $tokens = $null
+              $parseErrors = $null
+              [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$parseErrors)
+              if ($parseErrors.Count -gt 0) {
+                $parseErrors | ForEach-Object { Write-Output $_.ToString() }
+                exit 1
+              }
+              Write-Output ("ok " + $f.Name)
+            }
+          '
+
+      - name: Secret pattern
+        run: |
+          set -euo pipefail
+          pattern='AKIA[0-9A-Z]{16}|sk-(live|test|proj|ant|or)-[A-Za-z0-9_-]{16,}|sk_(live|test)_[0-9A-Za-z]{16,}|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[0-9A-Za-z-]{10,}|AIza[0-9A-Za-z_-]{35}'
+          pk=$(printf '%s' '-----BEGIN ([A-Z]+ )*PRIVATE KEY-----')
+          set +e
+          git grep -I -n -E -e "$pattern" -e "$pk" -- .
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "likely API key or private key found" >&2
+            exit 1
+          fi
+          if [ "$code" -ne 1 ]; then
+            echo "secret grep failed" >&2
+            exit "$code"
+          fi
