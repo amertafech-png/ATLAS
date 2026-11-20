@@ -1,9 +1,8 @@
 # MODI
 
-**A voice-and-camera command center for your own AI assistant.** MODI is a full-screen, Iron-Man-style interface that runs in its own
-app window on your Windows PC or Mac and talks to [Hermes Agent](https://hermes-agent.nousresearch.com) - an open-source AI agent that
-runs on your computer. Press **Space** (or click the orb), talk, and MODI answers out loud. Show it something with the camera. Everything
-runs **locally**.
+**Your own Jarvis-style assistant. Download one file, double-click, done.**
+
+No coding, no terminal, no complicated setup. MODI installs everything it needs on its own. You just sign in with the AI you already use, like ChatGPT, Claude, or Grok, and start talking.
 
 ![MODI](docs/screenshot.png)
 
