@@ -1,0 +1,5 @@
+aiohttp>=3.9
+psutil>=5.9
+faster-whisper>=1.0
+av>=13,<17
+piper-tts>=1.3

@@ -1,0 +1,36 @@
+{
+  "host": "127.0.0.1",
+  "port": 8765,
+  "mode": "api",
+  "hermes": {
+    "api_url": "http://127.0.0.1:8642",
+    "api_key": "",
+    "read_key_from_hermes_env": true,
+    "model": "hermes-agent",
+    "session_id": "jarvis-hud",
+    "timeout_seconds": 180,
+    "cli_command": "hermes",
+    "display_primary": "",
+    "display_fallback": "",
+    "display_next_job": ""
+  },
+  "stt": {
+    "model": "base",
+    "device": "auto",
+    "language": "en",
+    "vad": true,
+    "beam_size": 1
+  },
+  "tts": {
+    "voice": "en_GB-alan-medium",
+    "length_scale": 1.0,
+    "max_chars": 700,
+    "download_if_missing": true,
+    "engine": "auto",
+    "say_voice": "Daniel",
+    "say_rate": 180
+  },
+  "vision": {
+    "default_question": "What do you see? Answer briefly."
+  }
+}
