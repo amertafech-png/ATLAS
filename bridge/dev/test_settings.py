@@ -370,5 +370,20 @@ for t in ("show settings", "what are my settings"):
     it = S.parse(t)
     check("still lists, not open_ui: %r" % t, it is None or it.get("op") != "open_ui", it)
 
+# ------------------------------------------------------------------ v1.4.3: reload / reset without Hermes
+env, S = fresh()
+for t, op in (("reset ATLAS", "ui_reset"), ("reset atlas please", "ui_reset"), ("show reset options", "ui_reset"), ("reload the screen", "ui_reload"),
+              ("refresh the screen", "ui_reload"), ("reload atlas", "ui_reload"), ("please reload the screen", "ui_reload")):
+    it = S.parse(t)
+    check("%r -> %s" % (t, op), it is not None and it.get("op") == op, it)
+r = say(S, "reset ATLAS")
+check("reset ATLAS opens the Reset choices and changes nothing", (r.get("ui") or {}).get("open") == "reset" and not r.get("changed") and not env.did_reset, r)
+r = say(S, "reload the screen")
+check("reload the screen -> ui.reload", (r.get("ui") or {}).get("reload") is True, r)
+it = S.parse("factory reset")
+check("'factory reset' is still the settings reset (with its confirmation)", it is not None and it.get("op") == "run" and it.get("id") == "reset", it)
+it = S.parse("reset my layout")
+check("'reset my layout' is still the layout reset", it is not None and it.get("op") == "layout" and it.get("act") == "reset", it)
+
 print("FAILED: %s" % fails if fails else "ALL PASSED")
 sys.exit(1 if fails else 0)

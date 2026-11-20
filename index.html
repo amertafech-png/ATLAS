@@ -51,7 +51,9 @@ body{
 
 /* layout */
 .hud{position:fixed;inset:0;padding:2.2vh 2vw 2.2vh;display:grid;
-  grid-template-columns: 25% 1fr 25%; grid-template-rows:auto 1fr auto; gap:1.6vh 1.4vw}
+  grid-template-columns: 25% minmax(0,1fr) 25%; grid-template-rows:auto minmax(0,1fr) auto; gap:1.6vh 1.4vw}
+/* minmax(0,..): one long unbreakable word (an OAuth link in a reply) must never widen the centre and push the right column, the orb and the bar off screen (v1.4.3) */
+.hud>*{min-width:0}
 .top{grid-column:1/4;display:flex;justify-content:space-between;align-items:center;
   font-family:var(--mono);font-size:clamp(11px,.78vw,15px);letter-spacing:.28em;color:var(--dim);text-transform:uppercase;
   border-bottom:1px solid var(--faint);padding-bottom:1vh;position:relative}
@@ -170,7 +172,7 @@ body{
 .kv .vv em{font-style:normal;color:var(--c);margin-left:.6em;font-size:.8em;opacity:.85}
 
 /* center */
-.center{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0}
+.center{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;min-width:0}
 .greet{font-size:clamp(24px,2.5vw,48px);font-weight:200;letter-spacing:.16em;color:#e6fbff;text-transform:uppercase;text-align:center;
   text-shadow:0 0 22px var(--c);margin-bottom:.4vh}
 .greet-sub{font-family:var(--mono);font-size:clamp(10px,.78vw,15px);letter-spacing:.34em;color:var(--dim);text-transform:uppercase;text-align:center}
@@ -287,7 +289,7 @@ body{
 .loglist div{border-bottom:1px dashed var(--faint);padding:0 .4vw;display:flex;gap:1.2vw}
 .loglist .ts{color:var(--c);flex:none}
 .chatbox{flex:1;display:flex;flex-direction:column;gap:1.4vh}
-.bub{align-self:flex-start;max-width:85%;padding:1vh 1vw;border:1px solid var(--faint);background:rgba(53,224,255,.07);font-size:clamp(12px,.92vw,17px);color:#e6fbff}
+.bub{align-self:flex-start;max-width:85%;min-width:0;overflow-wrap:anywhere;padding:1vh 1vw;border:1px solid var(--faint);background:rgba(53,224,255,.07);font-size:clamp(12px,.92vw,17px);color:#e6fbff}
 
 
 /* ===== v3: live bridge ===== */
@@ -300,7 +302,7 @@ body{
 .dot.warn{background:var(--warn);box-shadow:0 0 10px var(--warn)}
 .dot.err{background:#ff6b6b;box-shadow:0 0 10px #ff6b6b;animation:none}
 .caption{min-height:2.95em;max-width:min(780px,94%);text-align:center;font-size:clamp(12px,.98vw,19px);line-height:1.45;color:#e6fbff;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;margin:.3vh auto 0;text-shadow:0 0 10px rgba(53,224,255,.35)}
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;cursor:pointer;margin:.3vh auto 0;text-shadow:0 0 10px rgba(53,224,255,.35)}
 .caption b{font-family:var(--mono);font-size:.7em;letter-spacing:.24em;color:var(--c);margin-right:.9em;font-weight:500}
 .caption.err{color:var(--warn)}
 .caption.dimmed{opacity:.55}
@@ -334,6 +336,7 @@ body{
 .bub .who{display:block;font-family:var(--mono);font-size:clamp(8px,.58vw,11px);letter-spacing:.24em;color:var(--c);margin-bottom:.3vh;text-transform:uppercase}
 .bub img{display:block;width:120px;aspect-ratio:16/9;object-fit:cover;border:1px solid var(--faint);margin-bottom:.5vh}
 .bub.e{border-color:rgba(255,179,71,.5);color:var(--warn)}
+.bub a.url{color:var(--c);text-decoration:underline;word-break:break-all}
 .chatin{display:flex;gap:.8vw;align-items:center;margin-top:1.2vh;border:1px solid var(--dim);padding:.8vh .9vw;background:rgba(2,12,26,.7)}
 .chatin input{flex:1;background:transparent;border:0;outline:0;color:#e6fbff;font-family:var(--mono);font-size:clamp(12px,.95vw,18px)}
 body:has(.ov.open) .caption{opacity:0}
@@ -586,6 +589,87 @@ body[data-conv=heard] .convring .arc{stroke:var(--c)}
 <div class="setup" id="setup"><div class="box" id="setupbox"></div></div>
 <div class="cfm" id="cfm"><div class="box"><h4 id="cfmt">CONFIRM ACTION</h4><p id="cfmp"></p><div class="row"><button class="btn" id="cfmno">Cancel</button><button class="btn sel" id="cfmyes">Allow</button></div></div></div>
 <div class="ov" id="ov" role="dialog" aria-modal="false"><div class="oh"><span id="ovt">Module</span><button class="x" id="ovx" aria-label="Close">✕</button></div><div class="ob" id="ovb"></div></div>
+<script id="atlas-safety">
+/* ---- v1.4.3 safety net: this small script runs BEFORE the main HUD code and does not depend on it ----
+   * a Reset button next to the ATLAS title (Reload screen / Reset layout to default / Restart ATLAS services), also Ctrl+Shift+R
+   * any script error is reported to the bridge (POST /api/client-error -> bridge.log)
+   * if the HUD's start-up throws, a banner offers "Part of the screen didn't load - Reload?" */
+(function(){
+  'use strict';
+  var sent=0,bannerShown=false;
+  function post(path,body){return fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})})}
+  function report(kind,msg,src,line,col,stack){
+    if(sent>=20)return;sent++;
+    try{post('/api/client-error',{kind:kind,message:String(msg||'').slice(0,500),source:String(src||'').slice(0,200),line:line||0,col:col||0,
+      stack:String(stack||'').slice(0,1500),phase:window.__hudReady?'running':'startup',ua:navigator.userAgent.slice(0,160),w:innerWidth,h:innerHeight}).catch(function(){})}catch(e){}
+  }
+  function css(){
+    if(document.getElementById('rs-css'))return;var st=document.createElement('style');st.id='rs-css';
+    st.textContent='.rs-btn{position:fixed;z-index:9990;font:inherit;font-family:monospace;font-size:11px;line-height:16px;letter-spacing:.18em;margin-left:1.2em;padding:2px 8px;border:1px solid rgba(53,224,255,.35);background:rgba(53,224,255,.06);color:#9af3ff;cursor:pointer;text-transform:uppercase}'+
+      '.rs-btn:hover{background:rgba(53,224,255,.18)}'+
+      '.rs-menu{position:fixed;z-index:9999;top:44px;left:2vw;min-width:280px;padding:10px;border:1px solid #35e0ff;background:rgba(2,10,18,.97);box-shadow:0 0 30px rgba(53,224,255,.25);font-family:system-ui,Segoe UI,sans-serif;color:#e6fbff}'+
+      '.rs-menu button{display:block;width:100%;text-align:left;margin:4px 0;padding:8px 10px;border:1px solid rgba(53,224,255,.3);background:rgba(53,224,255,.07);color:#e6fbff;font:inherit;cursor:pointer}'+
+      '.rs-menu button:hover{background:rgba(53,224,255,.2)}.rs-menu small{display:block;color:#7fbfd0;font-size:.82em;margin-top:2px}.rs-menu .rs-msg{color:#ffb347;font-size:.9em;min-height:1.2em;margin-top:6px}'+
+      '.rs-banner{position:fixed;z-index:9998;left:50%;top:12px;transform:translateX(-50%);padding:10px 16px;border:1px solid #ffb347;background:rgba(30,18,4,.96);color:#ffe2b8;font-family:system-ui,Segoe UI,sans-serif;font-size:14px;display:flex;gap:12px;align-items:center}'+
+      '.rs-banner button{border:1px solid #ffb347;background:rgba(255,179,71,.15);color:#fff;padding:4px 12px;cursor:pointer;font:inherit}';
+    document.head.appendChild(st);
+  }
+  function waitHealth(ms){var end=Date.now()+ms;return new Promise(function(res){(function t(){fetch('/api/health',{cache:'no-store'}).then(function(r){if(r.ok)res(true);else throw 0}).catch(function(){if(Date.now()>end)res(false);else setTimeout(t,1000)})})()})}
+  var R={
+    reload:function(){location.reload()},
+    resetLayout:function(ask){if(ask!==false&&!confirm('Put every panel back in its default place?'))return Promise.resolve(false);
+      return post('/api/layout/reset',{}).then(function(r){if(!r.ok)throw new Error('the bridge said '+r.status);location.reload();return true})},
+    restart:function(ask,msgEl){if(ask!==false&&!confirm('Restart ATLAS services? The bridge and Hermes restart; the screen reloads in a few seconds.'))return Promise.resolve(false);
+      if(msgEl)msgEl.textContent='Restarting... (this takes up to a minute)';
+      return post('/api/restart',{}).catch(function(){}).then(function(){return new Promise(function(r){setTimeout(r,3000)})}).then(function(){return waitHealth(90000)}).then(function(ok){
+        if(ok)location.reload();else if(msgEl)msgEl.textContent='ATLAS did not come back. Close this window and open ATLAS again from the Start Menu.';return ok})},
+    open:function(){
+      css();var old=document.getElementById('rs-menu');if(old){old.remove();return}
+      var m=document.createElement('div');m.className='rs-menu';m.id='rs-menu';
+      m.innerHTML='<b style="letter-spacing:.2em;color:#35e0ff">RESET</b>'+
+        '<button data-rs="reload">Reload screen<small>Redraws ATLAS. Keeps everything.</small></button>'+
+        '<button data-rs="layout">Reset layout to default<small>Puts every panel back in its default place.</small></button>'+
+        '<button data-rs="restart">Restart ATLAS services<small>Restarts the bridge and Hermes, then reloads.</small></button>'+
+        '<button data-rs="close">Close</button><div class="rs-msg" id="rs-msg"></div>';
+      document.body.appendChild(m);
+      var msg=m.querySelector('#rs-msg');
+      m.addEventListener('click',function(e){var b=e.target.closest('[data-rs]');if(!b)return;var a=b.getAttribute('data-rs');
+        if(a==='close')m.remove();else if(a==='reload')R.reload();
+        else if(a==='layout')R.resetLayout().catch(function(err){msg.textContent='Could not reset the layout: '+err.message});
+        else if(a==='restart')R.restart(true,msg)});
+    },
+    banner:function(){
+      if(bannerShown)return;bannerShown=true;css();
+      var b=document.createElement('div');b.className='rs-banner';b.id='rs-banner';b.setAttribute('role','alert');
+      b.innerHTML='<span>Part of the screen didn\u2019t load.</span><button data-b="reload">Reload</button><button data-b="more">More\u2026</button><button data-b="x" title="Dismiss">\u00d7</button>';
+      b.addEventListener('click',function(e){var x=e.target.getAttribute('data-b');if(x==='reload')R.reload();else if(x==='more')R.open();else if(x==='x')b.remove()});
+      (document.body||document.documentElement).appendChild(b);
+    },
+    report:report
+  };
+  window.__atlasReset=R;
+  window.addEventListener('error',function(e){
+    var t=e.target;if(t&&t!==window&&(t.tagName==='IMG'||t.tagName==='AUDIO'||t.tagName==='LINK'))return;     /* a missing image is not a crash */
+    report('error',e.message,e.filename,e.lineno,e.colno,e.error&&e.error.stack);
+    if(!window.__hudReady)R.banner();
+  });
+  window.addEventListener('unhandledrejection',function(e){var r=e.reason;report('promise',(r&&r.message)||String(r),'',0,0,r&&r.stack)});
+  window.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.shiftKey&&(e.key==='R'||e.key==='r')){e.preventDefault();e.stopPropagation();R.open()}},true);
+  function addButton(){
+    css();if(document.getElementById('rsbtn'))return;
+    /* lives directly in <body> above every overlay (the Connect-Hermes card, Settings, ...), placed right after the ATLAS title */
+    var b=document.createElement('button');
+    b.id='rsbtn';b.className='rs-btn';b.type='button';b.title='Reset or reload ATLAS (Ctrl+Shift+R)';b.textContent='\u27f2 Reset';
+    b.addEventListener('click',function(e){e.stopPropagation();R.open()});document.body.appendChild(b);
+    function place(){var t=document.querySelector('header.top>div');var r=t?t.getBoundingClientRect():null;
+      b.style.left=Math.round(r&&r.width?r.right+12:16)+'px';b.style.top=Math.round(r&&r.height?r.top+r.height/2-11:10)+'px'}
+    place();addEventListener('resize',place);setTimeout(place,500);setTimeout(place,3000);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',addButton);else addButton();
+  /* the main HUD sets window.__hudReady when its start-up finished; if it never does, offer the reload */
+  setTimeout(function(){if(!window.__hudReady){report('startup','the HUD did not finish starting within 25 s');R.banner()}},25000);
+})();
+</script>
 <script>
 (function(){
 let TZ=(Intl.DateTimeFormat().resolvedOptions().timeZone)||'UTC';
@@ -1230,8 +1314,14 @@ function setOrb(m){
   document.getElementById('mic').style.background=m==='listening'?'rgba(53,224,255,.3)':'';
   if(m==='idle'||m==='thinking'||m==='transcribing')lvl=0;
 }
+/* long web addresses: shown shortened (host/path…), full address on hover, a click opens it in the default browser */
+const URL_RE=/\bhttps?:\/\/[^\s<>"']+/g;
+function shortUrl(u){let t=u.replace(/^https?:\/\//,'');return t.length>48?t.slice(0,45)+'…':t}
+function fmtText(t,links){t=String(t==null?'':t);let out='',i=0;t.replace(URL_RE,(u,at)=>{const tr=(u.match(/[.,;:!?)\]]+$/)||[''])[0];u=u.slice(0,u.length-tr.length);
+  out+=esc(t.slice(i,at))+(links?'<a class="url" href="'+esc(u)+'" title="'+esc(u)+'" target="_blank" rel="noopener">'+esc(shortUrl(u))+'</a>':esc(shortUrl(u)));i=at+u.length;return u});
+  return out+esc(t.slice(i))}
 function setCaption(who,text,err){
-  cap.innerHTML=(who?'<b>'+esc(who)+'</b>':'')+esc(text);cap.classList.toggle('err',!!err);cap.classList.remove('dimmed');
+  cap.innerHTML=(who?'<b>'+esc(who)+'</b>':'')+fmtText(text,false);cap.classList.toggle('err',!!err);cap.classList.remove('dimmed');
 }
 cap.addEventListener('click',()=>openMod('chat'));
 
@@ -1243,7 +1333,7 @@ function addMsg(role,text,extra){
 function renderChat(){
   const el=document.getElementById('msgs');if(!el)return;
   if(!MSGS.length){el.innerHTML='<div class="ph" style="padding:4vh 0"><div>No messages yet</div><div class="tag live">Hermes via local bridge</div></div>';return}
-  el.innerHTML=MSGS.map(m=>`<div class="bub ${m.role==='user'?'u':m.error?'e':''}"><span class="who">${m.role==='user'?(window.__name||'You'):esc(an())}${m.kind==='look'?' · camera':''}</span>${m.thumb?`<img src="${m.thumb}" alt="">`:''}${esc(m.text)}</div>`).join('');
+  el.innerHTML=MSGS.map(m=>`<div class="bub ${m.role==='user'?'u':m.error?'e':''}"><span class="who">${m.role==='user'?(window.__name||'You'):esc(an())}${m.kind==='look'?' · camera':''}</span>${m.thumb?`<img src="${m.thumb}" alt="">`:''}${fmtText(m.text,true)}</div>`).join('');
   el.scrollTop=el.scrollHeight;
   el.querySelectorAll('img').forEach(i=>i.addEventListener('load',()=>{el.scrollTop=el.scrollHeight}));
 }
@@ -1282,6 +1372,8 @@ document.getElementById('spk').classList.toggle('sel',speakOn);
 
 /* ---- a setting changed by voice/chat ("turn off wake word"): apply it before the answer is spoken ---- */
 function applyLocal(r){
+  if(r.ui&&r.ui.reload){setTimeout(()=>location.reload(),1800)}
+  if(r.ui&&r.ui.open==='reset'&&window.__atlasReset){window.__atlasReset.open()}
   if(r.prefs)applyPrefs(r.prefs);
   if(r.profile)applyProfile(r.profile);
   if(r.assistant)applyAssistant(r.assistant);
@@ -1823,10 +1915,19 @@ function renderSettings(fresh){
   if(fresh){ED=null}
   if(!fresh&&ovb.contains(document.activeElement)&&document.activeElement.tagName==='INPUT')return;   /* don't wipe what the user is typing */
   if(!fresh&&setTab==='profile'&&document.getElementById('settab'))return;                           /* profile tab only redraws on open/save */
-  ovb.innerHTML='<div class="tabs"><button class="tab'+(setTab==='profile'?' sel':'')+'" data-tab="profile">Profile</button><button class="tab'+(setTab==='features'?' sel':'')+'" data-tab="features">Features</button><button class="tab'+(setTab==='general'?' sel':'')+'" data-tab="general">General</button><button class="tab'+(setTab==='ai'?' sel':'')+'" data-tab="ai">AI connection</button></div><div id="settab"></div><div class="foot"><span class="lab">Saved on this computer</span><span class="lab" id="setupd" style="cursor:pointer;text-decoration:underline">ATLAS v'+esc((BR.health&&BR.health.version)||'?')+' · Updates</span></div>';
+  ovb.innerHTML='<div class="tabs"><button class="tab'+(setTab==='profile'?' sel':'')+'" data-tab="profile">Profile</button><button class="tab'+(setTab==='features'?' sel':'')+'" data-tab="features">Features</button><button class="tab'+(setTab==='general'?' sel':'')+'" data-tab="general">General</button><button class="tab'+(setTab==='ai'?' sel':'')+'" data-tab="ai">AI connection</button><button class="tab'+(setTab==='reset'?' sel':'')+'" data-tab="reset">Reset</button></div><div id="settab"></div><div class="foot"><span class="lab">Saved on this computer</span><span class="lab" id="setupd" style="cursor:pointer;text-decoration:underline">ATLAS v'+esc((BR.health&&BR.health.version)||'?')+' · Updates</span></div>';
   ovb.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{setTab=b.dataset.tab;renderSettings(true)});
   const su=document.getElementById('setupd');if(su)su.onclick=()=>openMod('update');
-  if(setTab==='profile')renderProfileTab();else if(setTab==='ai')renderAiTab();else if(setTab==='general')renderGeneralTab();else renderFeaturesTab();
+  if(setTab==='profile')renderProfileTab();else if(setTab==='ai')renderAiTab();else if(setTab==='reset')renderResetTab();else if(setTab==='general')renderGeneralTab();else renderFeaturesTab();
+}
+function renderResetTab(){
+  const R=window.__atlasReset;const el=document.getElementById('settab');if(!el)return;
+  el.innerHTML='<p class="msg" style="margin:0 0 1.2vh">If something on the screen looks wrong or stopped working, try these in order. Shortcut: Ctrl+Shift+R, or say “reset ATLAS”.</p>'+
+    '<div class="prof"><label>Reload screen</label><div class="prow"><button class="btn" data-rst="reload">Reload screen</button><span class="msg">Redraws ATLAS. Keeps everything.</span></div>'+
+    '<label>Panel layout</label><div class="prow"><button class="btn" data-rst="layout">Reset layout to default</button><span class="msg">Puts every panel back in its default place.</span></div>'+
+    '<label>Services</label><div class="prow"><button class="btn" data-rst="restart">Restart ATLAS services</button><span class="msg" id="rstmsg">Restarts the bridge and Hermes, then reloads.</span></div></div>';
+  el.querySelectorAll('[data-rst]').forEach(b=>b.onclick=()=>{if(!R)return location.reload();const a=b.dataset.rst;
+    if(a==='reload')R.reload();else if(a==='layout')R.resetLayout().catch(e=>{document.getElementById('rstmsg').textContent=e.message});else R.restart(true,document.getElementById('rstmsg'))});
 }
 async function loadFeatures(){
   try{const j=await api('/api/features');FEATS=j.features;renderSettings();loadFeatureUi()}catch(e){}
@@ -2018,9 +2119,15 @@ function renderAiTab(){
     }catch(e){m.className='msg bad';m.textContent=e.message}tb.disabled=false};
 }
 
+/* start-up: each step on its own, so one failing panel/module never stops the others, the bottom bar or the orb (v1.4.3) */
+function safe(name,fn){try{const r=fn();if(r&&typeof r.catch==='function')r.catch(e=>{console.error('ATLAS '+name,e);window.__atlasReset&&__atlasReset.report('init:'+name,e&&e.message,'',0,0,e&&e.stack)});return r}
+  catch(e){console.error('ATLAS '+name,e);if(window.__atlasReset){__atlasReset.report('init:'+name,e&&e.message,'',0,0,e&&e.stack);__atlasReset.banner()}}}
 (async()=>{
-  await pollHealth();setOrb('idle');if(BR.online){loadSettings();loadHistory();loadFeatures();startEvents();loadUpdate();setInterval(loadUpdate,600000)}
-  setInterval(pollHealth,4000);setInterval(pollSystem,2000);pollSystem();
+  try{await pollHealth()}catch(e){safe('health',()=>{throw e})}
+  safe('orb',()=>setOrb('idle'));
+  if(BR.online){safe('settings',loadSettings);safe('history',loadHistory);safe('features',loadFeatures);safe('events',startEvents);safe('update',loadUpdate);setInterval(()=>safe('update',loadUpdate),600000)}
+  setInterval(()=>{try{pollHealth()}catch(e){}},4000);setInterval(()=>safe('system',pollSystem),2000);safe('system',pollSystem);
+  window.__hudReady=true;
 })();
 window.__hud={rems:()=>REMS,scene:()=>({scene:orbScene,mode:orbMode,on:sceneOn,skin:document.documentElement.dataset.skin}),setScene,sceneFor,loadReminders,openModules,MODS,loadModules,cal:()=>CALS,brief:()=>BRIEF,sc:()=>SC,loadCalendar,loadScores,loadBrief,morningBrief,openSetup,SU,ATLAS,openMod,FT,ftUpdate,askHermes,look,voiceToggle,CONV,convIsEnd,closeSetup,setSpeak:v=>{speakOn=!!v},speakOn:()=>speakOn,an:()=>an(),prof:()=>PROF,sets:()=>SETS,state:()=>({online:BR.online,rec:{speech:REC.speech,conv:REC.conv,lvl:lvl,state:REC.rec&&REC.rec.state},orb:orbMode,msgs:MSGS.slice(),caption:cap.textContent,captionErr:cap.classList.contains('err')})};   /* read-only snapshot for the dev tests */
 })();

@@ -33,6 +33,74 @@ def fetch_weather(profile):
             "rain": (day.get("precipitation_probability_max") or [None])[0], "unit": "degrees"}
 
 
+# ---- calendar questions in everyday words (v1.4.3) ----
+CAL_WORDS = r"calendar|calendars|schedule|agenda|appointments?|meetings?|events?|plans|diary"
+CAL_TOPIC = re.compile(r"\b(?:%s)\b|\bwhat(?:'s| is| was) (?:on|happening) (?:today|tomorrow|tonight|yesterday|this|next|last|on)\b|\bam i (?:busy|free)\b|\bwas i busy\b" % CAL_WORDS)
+ASK_WORDS = re.compile(r"^(?:check|look at|look up|show|show me|read|read me|tell me|list|pull up|open|go through|give me|get|what|what's|whats|which|when|do i|did i|am i|was i|have i|any|anything|is there|are there|how many|how busy|how's|how is)\b")
+RANGE_WORDS = (r"today|tonight|tomorrow|yesterday|this week|next week|last week|past week|the past week|previous week|the last (?:7|seven) days|the next (?:7|seven) days|"
+               r"this weekend|next weekend|last weekend|this month|next month|last month|(?:last |next |this |on )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)")
+
+
+def calendar_range(t, today):
+    """(first_day, last_day_inclusive, label, past) for the time words in `t`; None if there are none."""
+    t = re.sub(r"'s\b", "", t)
+    m = re.search(r"\b(" + RANGE_WORDS + r")\b", t)
+    if not m:
+        return None
+    w = re.sub(r"^the ", "", m.group(1))
+    wd = lambda d: d.weekday()   # noqa: E731
+    if w in ("today", "tonight"):
+        return today, today, w, False
+    if w == "tomorrow":
+        return today + timedelta(days=1), today + timedelta(days=1), w, False
+    if w == "yesterday":
+        return today - timedelta(days=1), today - timedelta(days=1), w, True
+    if w == "this week":
+        return today, today + timedelta(days=6), w, False
+    if w in ("next 7 days", "next seven days"):
+        return today, today + timedelta(days=6), "the next 7 days", False
+    if w == "next week":
+        mon = today + timedelta(days=7 - wd(today))
+        return mon, mon + timedelta(days=6), w, False
+    if w in ("last week", "previous week"):
+        mon = today - timedelta(days=wd(today) + 7)
+        return mon, mon + timedelta(days=6), "last week", True
+    if w in ("past week", "last 7 days", "last seven days"):
+        return today - timedelta(days=7), today - timedelta(days=1), "the past 7 days", True
+    if w in ("this weekend", "next weekend", "last weekend"):
+        sat = today + timedelta(days=(5 - wd(today)) % 7)
+        if w == "next weekend":
+            sat += timedelta(days=7)
+        if w == "last weekend":
+            sat = today - timedelta(days=(wd(today) - 5) % 7 or 7)
+        return sat, sat + timedelta(days=1), w, w == "last weekend"
+    if w in ("this month", "next month", "last month"):
+        first = today.replace(day=1)
+        if w == "next month":
+            first = (first + timedelta(days=32)).replace(day=1)
+        elif w == "last month":
+            first = (first - timedelta(days=1)).replace(day=1)
+        last = (first + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        if w == "this month":
+            first = today
+        return first, last, w, w == "last month"
+    parts = w.split()
+    day = parts[-1]
+    i = WEEKDAYS.index(day)
+    if parts[0] == "last":
+        d = today - timedelta(days=(wd(today) - i) % 7 or 7)
+        return d, d, "last " + day.capitalize(), True
+    d = today + timedelta(days=(i - wd(today)) % 7)
+    if parts[0] == "next" and d == today:
+        d += timedelta(days=7)
+    return d, d, "on " + day.capitalize(), False
+
+
+def is_calendar_topic(t):
+    t = (t or "").lower().replace("\u2019", "'")
+    return bool(CAL_TOPIC.search(t)) and not re.search(r"\bwhat (?:is|'s) an? (?:calendar|schedule|agenda)\b|\bcalendar (?:settings|app)\b|\bsettings\b", t)
+
+
 def clock(dt):
     s = dt.strftime("%I:%M %p").lstrip("0")
     return s.replace(":00 ", " ")
@@ -166,6 +234,13 @@ class Info:
             or re.fullmatch(r"(?:score|results?) (?:for|of) (?:the |my )?(.+)", t)
         if m and m.group(1).strip() not in NOT_TEAMS and not re.search(r"\b(?:day|week|night|morning|weekend|you|your)$", m.group(1).strip()):
             return {"op": "scores", "team": m.group(1).strip()}
+        # "reconnect my Google calendar": ATLAS reads the calendar itself from the link in Settings - answer here, never via Hermes' connectors
+        if re.search(r"\b(?:re-?connect|connect|link|sync|hook up|set up|authori[sz]e|sign in to|log in to)\b.*\b(?:google |outlook |icloud |my |the )?calendar\b|\bcalendar\b.*\b(?:not connected|isn't connected|disconnected|reconnect)\b", t):
+            return {"op": "calendar_connect"}
+        # everyday calendar questions: "check last week's calendar", "what meetings did I have yesterday", "am I free on Friday"
+        if is_calendar_topic(t) and len(t.split()) <= 16 and ASK_WORDS.search(t) and not re.search(r"\b(?:add|create|schedule a|book|move|cancel|delete|remind|invite|email|send|why|how do i|how can i)\b", t):
+            rng = calendar_range(t, self.now().date())
+            return {"op": "calendar", "range": rng} if rng else {"op": "calendar", "when": "this week"}
         return None
 
     # ---- executing
@@ -178,6 +253,13 @@ class Info:
         if op == "brief":
             b = await loop.run_in_executor(None, self.brief)
             return {"reply": b["text"], "changed": [], "ui": None, "pending": False, "brief": b}
+        if op == "calendar_connect":
+            ps = self.env.calendar.public_sources()
+            if ps:
+                return self._r("Your calendar is already connected to me: %s. I read it straight from the calendar link in Settings, so there's nothing to reconnect and no Google sign-in is needed. "
+                               "Ask me what's on today, tomorrow or last week. To change the link, open Settings, then Calendar." % ", ".join(p["name"] for p in ps))
+            return self._r("I read your calendar from its secret calendar link, no sign-in needed. Open Settings, then Calendar, and paste the link from Google Calendar "
+                           "(Settings and sharing, Secret address in iCal format) or an .ics file.")
         if op in ("calendar", "next"):
             return await loop.run_in_executor(None, self._calendar_reply, it)
         if op == "calendars":
@@ -196,7 +278,7 @@ class Info:
     def _calendar_reply(self, it):
         cal = self.env.calendar
         if not cal.sources():
-            return self._r("You haven't connected a calendar yet. Open Settings and add an .ics file or your calendar's secret link - no sign-in needed.")
+            return self._r("You haven't connected a calendar yet. Open Settings, then Calendar, and add an .ics file or your calendar's secret link - no sign-in needed.")
         now = self.now()
         today = now.date()
         mid = lambda d: datetime.combine(d, datetime.min.time()).replace(tzinfo=now.tzinfo)
@@ -206,6 +288,18 @@ class Info:
                 return self._r("Nothing coming up in the next 30 days.")
             e = evs[0]
             return self._r("Your next event is %s %s at %s%s." % (e["title"], day_label(e["start"].date(), today), clock(e["start"]), (" in " + e["location"]) if e["location"] else ""))
+        if it.get("range"):
+            first, last, label, past = it["range"]
+            days = [first + timedelta(days=i) for i in range((last - first).days + 1)]
+            evs = cal.events(mid(first), mid(last) + timedelta(days=1))
+            if label == "tonight":
+                evs = [e for e in evs if not e["all_day"] and e["start"].hour >= 17]
+            if not evs:
+                return self._r(("There was nothing on your calendar %s." if past else "Nothing %s on your calendar.") % label)
+            multi = len(days) > 1
+            lines = ["%s%s%s" % ((e["start"].strftime("%A %b ") + str(e["start"].day) + ": ") if multi else "", e["title"], (", all day" if e["all_day"] else " at " + clock(e["start"]))) for e in evs[:10]]
+            return self._r("%s you %s %d event%s. %s%s." % (label[0].upper() + label[1:] + ",", "had" if past else "have", len(evs), "" if len(evs) == 1 else "s", "; ".join(lines),
+                                                           ("; and %d more" % (len(evs) - 10)) if len(evs) > 10 else ""))
         when = it["when"]
         if when in ("today", "tonight"):
             days = [today]; label = "today" if when == "today" else "tonight"
@@ -238,6 +332,27 @@ class Info:
         for e in evs[:8]:
             lines.append("%s%s%s" % ((day_label(e["start"].date(), today) + ": ") if multi else "", e["title"], (", all day" if e["all_day"] else " at " + clock(e["start"]))))
         return self._r("%s: %d event%s. %s%s." % (label.capitalize(), len(evs), "" if len(evs) == 1 else "s", "; ".join(lines), ("; and %d more" % (len(evs) - 8)) if len(evs) > 8 else ""))
+
+    def calendar_context(self, text):
+        """Calendar facts to hand to Hermes with a calendar-related request ATLAS doesn't answer itself."""
+        rule = ("Use ONLY these calendar events from ATLAS. Do not use Google, Microsoft or any other connectors or skills for the calendar, do not ask the user to sign in "
+                "or reconnect, and never search the user's files for credentials or tokens. If something isn't in this list, say it isn't on the calendar ATLAS reads.")
+        cal = self.env.calendar
+        if not cal.sources():
+            return ("[ATLAS calendar] No calendar is connected to ATLAS. Tell the user to open ATLAS Settings, then Calendar, and paste their calendar's secret iCal link "
+                    "(Google Calendar: Settings and sharing, Secret address in iCal format). Do not try to connect or search for a calendar yourself.")
+        now = self.now()
+        today = now.date()
+        rng = calendar_range(str(text or "").lower().replace("\u2019", "'"), today)
+        first, last = (rng[0], rng[1]) if rng else (today - timedelta(days=7), today + timedelta(days=14))
+        first, last = min(first, today - timedelta(days=1)), max(last, today + timedelta(days=1))
+        mid = lambda d: datetime.combine(d, datetime.min.time()).replace(tzinfo=now.tzinfo)   # noqa: E731
+        evs = cal.events(mid(first), mid(last) + timedelta(days=1))
+        lines = ["- %s %s: %s%s" % (e["start"].strftime("%a %Y-%m-%d"), "all day" if e["all_day"] else clock(e["start"]) + "-" + clock(e["end"]), e["title"],
+                                   (" (" + e["location"] + ")") if e["location"] else "") for e in evs[:60]]
+        errs = [p["name"] + ": " + p["error"] for p in cal.public_sources() if p.get("error")]
+        return ("[ATLAS calendar] Now: %s. Events from %s to %s (%d):\n%s%s\n%s" % (now.strftime("%A %Y-%m-%d %H:%M"), first.isoformat(), last.isoformat(), len(evs),
+                "\n".join(lines) if lines else "- (no events in this period)", ("\nCalendar problems: " + "; ".join(errs)) if errs else "", rule))
 
     def _scores_reply(self, it):
         sports = (self.env.cfg.get("profile") or {}).get("sports") or []

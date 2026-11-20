@@ -46,6 +46,9 @@ async def chat(req):
         return web.json_response({"id": "x", "object": "chat.completion", "choices": [{"index": 0, "message": {"role": "assistant", "content": "no provider"}, "finish_reason": "error"}],
                                   "hermes": {"failed": True, "error": "Hermes is not connected to any AI provider yet. Run `hermes model` to pick one."}})
     body = await req.json()
+    if __import__("os").environ.get("MOCK_REQ_LOG"):          # tests read exactly what the bridge sent
+        with open(__import__("os").environ["MOCK_REQ_LOG"], "a") as f:
+            f.write(json.dumps(body) + "\n")
     sid = req.headers.get("X-Hermes-Session-Id", "none")
     turns = SESSIONS.setdefault(sid, [])
     user = body["messages"][-1]["content"]
@@ -74,6 +77,10 @@ async def chat(req):
     if mode == "always" or (mode == "once" and not has_retry_nudge(body) and not ECHOED.get(sid)):
         ECHOED[sid] = True
         reply = "Here is an example of a function call in the format you requested for your question:\nTool: get_current_time\nArguments: {}"
+    if "longurl" in low:      # an OAuth-style reply: one very long address with no spaces (v1.4.3 layout regression)
+        reply = ("To reconnect Google Calendar open this link and paste the address bar back to me: https://accounts.google.com/o/oauth2/auth?"
+                 + "&".join("scope%d=https%%3A%%2F%%2Fwww.googleapis.com%%2Fauth%%2Fcalendar.readonly%%20openid%%20email" % i for i in range(25))
+                 + "&redirect_uri=http%3A%2F%2Flocalhost%3A1&response_type=code&client_id=" + "x" * 200)
     if len(reply) > 0 and "longreply" in low:
         reply = ("This is a long answer. " * 40).strip()
     await __import__("asyncio").sleep(0.8)

@@ -380,6 +380,12 @@ class Settings:
         if re.fullmatch(r"(?:what are|what is|what's|whats|show|list|read|tell me|give me)(?: me)?(?: out)?(?: all)?(?: of)?(?: my| the| your)?(?: current)? settings(?: are| right now)?", low) \
                 or low in ("what are my settings", "settings", "what settings do i have", "read my settings"):
             return Intent(op="list")
+        # v1.4.3: recovery that works without Hermes. "reset ATLAS" shows the Reset choices (nothing is changed until one is picked).
+        nm = re.escape(norm(self.env.assistant_name()))
+        if re.fullmatch(r"(?:please )?(?:reload|refresh|redraw|restart)(?: the| my| your)? (?:screen|display|hud|interface|dashboard|window|page)|(?:please )?(?:reload|refresh) (?:" + nm + r"|atlas)", low):
+            return Intent(op="ui_reload")
+        if re.fullmatch(r"(?:please )?reset (?:" + nm + r"|atlas)|(?:show|open)(?: me)?(?: the)? reset(?: options| menu)?|reset options", low):
+            return Intent(op="ui_reset")
         if re.fullmatch(r"(?:please )?(?:open|bring up|pull up|go to|take me to|launch|show(?: me)? the)(?: up)?(?: the| my| your)? settings(?: panel| page| window| menu| screen| tab)?|(?:open|show) (?:the )?settings (?:panel|page|window|menu|screen|tab)|where (?:are|is) (?:the |my )?settings|how do i (?:open|get to|find) (?:the )?settings", low):
             return Intent(op="open_ui")
         if re.fullmatch(r"what (?:can|could) i (?:change|set|control|configure)(?: by voice| with my voice)?|what settings can i (?:change|set|control)|what can i say(?: to change settings)?|help with settings", low):
@@ -426,7 +432,7 @@ class Settings:
             return Intent(op="run", id="updates.check")
         if re.fullmatch(r"(?:install|apply|download|get) (?:the |an? |any |all )?(?:waiting |new |available |latest )?updates?|update yourself|update " + re.escape(norm(name)), low):
             return Intent(op="run", id="updates.install")
-        if re.fullmatch(r"(?:reset|restore)(?: all| everything in)?(?: my| the| your)? (?:settings|preferences|defaults)(?: to (?:the )?(?:defaults?|factory settings))?|factory reset|reset " + re.escape(norm(name)), low):
+        if re.fullmatch(r"(?:reset|restore)(?: all| everything in)?(?: my| the| your)? (?:settings|preferences|defaults)(?: to (?:the )?(?:defaults?|factory settings))?|factory reset", low):
             return Intent(op="run", id="reset")
         if re.fullmatch(r"uninstall(?: " + re.escape(norm(name)) + r"| yourself|)|remove " + re.escape(norm(name)) + r" from (?:my|this) (?:computer|pc|laptop|mac)|delete " + re.escape(norm(name)), low):
             return Intent(op="run", id="uninstall")
@@ -716,6 +722,10 @@ class Settings:
         e = self.env
         if op == "list":
             return self._r(self._overview())
+        if op == "ui_reload":
+            return self._r("Reloading the screen. Nothing is lost.", [], ui={"reload": True})
+        if op == "ui_reset":
+            return self._r("Here are the reset options: reload the screen, put the panels back in their default places, or restart my services. Pick one on the screen. You can also press Control Shift R.", [], ui={"open": "reset"})
         if op == "open_ui":
             return self._r("Opening Settings. You can also click Settings at the right end of the bar at the bottom, or press Ctrl and comma.", [], ui={"open": "settings"})
         if op == "help":
