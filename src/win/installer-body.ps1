@@ -30,6 +30,61 @@ $Desktop = [Environment]::GetFolderPath('Desktop')
 $StartMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'ATLAS'
 $Startup = [Environment]::GetFolderPath('Startup')
 
+# ---- no console window behind the installer window (1.4.2) ----
+# Double-clicking ATLAS-Setup.bat opens a console. In window (GUI) mode we start a HIDDEN copy of this installer, wait until it reports
+# that its window is open, and then this visible copy exits, so the console closes. conhost.exe is used explicitly so the hidden copy
+# also stays hidden on PCs where Windows Terminal is the default terminal. If the hidden copy can't open its window, it says so and
+# exits, and setup simply continues here in the visible console as before (the old behaviour).
+# The hidden copy's console output goes to %TEMP%\ATLAS-setup.log (not under the ATLAS folder: uninstall removes that folder).
+$SetupLog = Join-Path $env:TEMP 'ATLAS-setup.log'
+$script:HiddenChild = [bool]$env:ATLAS_SETUP_CHILD
+function Set-ChildState([string]$state) {
+    if ($script:HiddenChild -and $env:ATLAS_SETUP_RUNDIR) { try { Set-Content -LiteralPath (Join-Path $env:ATLAS_SETUP_RUNDIR 'state') -Value $state -Encoding ASCII } catch { } }
+}
+if ($script:HiddenChild) {
+    try { Start-Transcript -LiteralPath $SetupLog -Force | Out-Null } catch { }
+    $rd = $env:ATLAS_SETUP_RUNDIR
+    if ($rd) { [void](Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action { try { Stop-Transcript | Out-Null } catch { }; Start-Sleep -Milliseconds 300; Remove-Item -LiteralPath $rd -Recurse -Force -ErrorAction SilentlyContinue }.GetNewClosure()) }
+} elseif ((-not $Yes) -and (-not $ExtractTo) -and ($env:OS -eq 'Windows_NT') -and (-not $env:ATLAS_SETUP_NOHIDE) -and (-not $env:ATLAS_UI_NO_OPEN) -and
+          $env:ATLAS_PAYLOAD_FILE -and (Test-Path -LiteralPath $env:ATLAS_PAYLOAD_FILE) -and $PSCommandPath) {
+    $relaunched = $false; $origPayload = $env:ATLAS_PAYLOAD_FILE; $pl = ''
+    try {
+        # sweep leftovers of earlier runs, then copy this script + payload to a folder the hidden copy owns (the .bat deletes its own)
+        Get-ChildItem -LiteralPath $env:TEMP -Directory -Filter 'atlas-setup-run-*' -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-1) } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        $run = Join-Path $env:TEMP ('atlas-setup-run-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Force -Path $run | Out-Null
+        $ps1 = Join-Path $run 'ATLAS-Setup.ps1'; $pl = Join-Path $run 'payload.b64'
+        Copy-Item -LiteralPath $PSCommandPath -Destination $ps1 -Force
+        Copy-Item -LiteralPath $env:ATLAS_PAYLOAD_FILE -Destination $pl -Force
+        $env:ATLAS_SETUP_CHILD = '1'; $env:ATLAS_SETUP_RUNDIR = $run; $env:ATLAS_PAYLOAD_FILE = $pl
+        $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $psArgs = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $ps1 + '"'
+        if ($Action) { $psArgs += ' ' + $Action }
+        $conhost = Join-Path $env:WINDIR 'System32\conhost.exe'
+        if (Test-Path -LiteralPath $conhost) { $child = Start-Process -FilePath $conhost -ArgumentList ('"' + $psExe + '" ' + $psArgs) -WindowStyle Hidden -PassThru }
+        else { $child = Start-Process -FilePath $psExe -ArgumentList $psArgs -WindowStyle Hidden -PassThru }
+        Write-Host '  Opening the ATLAS Setup window...'
+        $deadline = (Get-Date).AddSeconds(120); $state = ''
+        while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 300
+            $sf = Join-Path $run 'state'
+            if (Test-Path -LiteralPath $sf) { $state = ([string](Get-Content -LiteralPath $sf -Raw)).Trim() }
+            if ($state -eq 'ui-up') { $relaunched = $true; break }
+            if ($state -eq 'ui-failed' -or $child.HasExited) { break }
+        }
+        if (-not $relaunched) {
+            try { if (-not $child.HasExited) { Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue } } catch { }
+            Write-Host '  (the setup window did not open from the background - continuing here)'
+        }
+    } catch { Write-Host ('  (could not start setup in the background: ' + $_.Exception.Message + ' - continuing here)') }
+    if ($relaunched) { exit 0 }
+    Remove-Item Env:\ATLAS_SETUP_CHILD, Env:\ATLAS_SETUP_RUNDIR -ErrorAction SilentlyContinue
+    $env:ATLAS_PAYLOAD_FILE = $origPayload
+    if ($pl) { Remove-Item -LiteralPath (Split-Path $pl) -Recurse -Force -ErrorAction SilentlyContinue }
+    $env:ATLAS_SETUP_NOHIDE = '1'
+}
+
 function Extract-Payload([string]$dest) {
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
     $b64 = ((Get-Content -Raw -LiteralPath $env:ATLAS_PAYLOAD_FILE) -replace '\s', '')
@@ -196,18 +251,66 @@ function Open-DefaultBrowser([string]$url) {
     try { Start-Process $url; return $true } catch { }
     try { Start-Process -FilePath (Join-Path $env:WINDIR 'System32\rundll32.exe') -ArgumentList @('url.dll,FileProtocolHandler', $url); return $true } catch { return $false }
 }
+# ---- the app window's browser ----
+# Order: the user's DEFAULT browser if it is Chromium-based (Chrome / Edge / Brave), else Chrome, else Edge, else Brave.
+# Chrome is preferred over Edge because Edge signs a new profile in with the Windows Microsoft account ("implicit sign-in") and
+# shows "We are now syncing your browsing data ... we've also signed you in to Microsoft Edge" in the ATLAS window.
+function Get-DefaultBrowserKind {
+    foreach ($proto in @('https', 'http')) {
+        try {
+            $id = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$proto\UserChoice" -ErrorAction Stop).ProgId
+            if ($id -like 'ChromeHTML*') { return 'chrome' }
+            if ($id -like 'MSEdgeHTM*') { return 'msedge' }
+            if ($id -like 'BraveHTML*') { return 'brave' }
+            if ($id) { return '' }                                 # Firefox etc.: not usable for an app window
+        } catch { }
+    }
+    return ''
+}
+function Find-BrowserExe([string]$kind) {
+    $exe = "$kind.exe"
+    $cands = @()
+    foreach ($hive in @('HKCU', 'HKLM')) {
+        try { $v = (Get-ItemProperty "${hive}:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$exe" -ErrorAction Stop).'(default)'; if ($v) { $cands += $v.Trim('"') } } catch { }
+    }
+    $pf86 = ${env:ProgramFiles(x86)}
+    switch ($kind) {
+        'chrome' { $cands += @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "$pf86\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") }
+        'msedge' { $cands += @("$pf86\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") }
+        'brave'  { $cands += @("$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe", "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe") }
+    }
+    foreach ($c in $cands) { if ($c -and (Test-Path -LiteralPath $c)) { return $c } }
+    return $null
+}
+function Find-Browser {
+    $order = @()
+    $def = Get-DefaultBrowserKind
+    if ($def) { $order += $def }
+    foreach ($k in @('chrome', 'msedge', 'brave')) { if ($order -notcontains $k) { $order += $k } }
+    foreach ($k in $order) { $p = Find-BrowserExe $k; if ($p) { return @{ Path = $p; Kind = $k } } }
+    return $null
+}
+# Switches for ATLAS's app windows (same as win\\ATLAS.ps1; tools/check-app-window.sh checks they match).
+# A private profile (never the user's own), no first-run / default-browser / sign-in prompts, no sync, nothing left running in the
+# background. Edge only: switch off its implicit Microsoft-account sign-in (the sync popup) - --disable-sync alone does not.
+# Chromium only honours ONE --disable-features switch, so all features go in one.
+function Get-AppWindowArgs([string]$kind, [string]$url, [string]$profileDir, [string]$size) {
+    $a = @("--app=$url", "--user-data-dir=`"$profileDir`"", "--window-size=$size", '--no-first-run', '--no-default-browser-check',
+           '--disable-sync', '--disable-signin-promo', '--disable-background-mode', '--no-service-autorun', '--autoplay-policy=no-user-gesture-required')
+    if ($kind -eq 'msedge') { $a += '--disable-features=msImplicitSignin,msEdgeImplicitSignin,msIdentityImplicitSignin,msEdgeSyncConsent' }
+    return $a
+}
 function Open-UiWindow([string]$url, [string]$profileDir) {
-    $exes = @()
-    foreach ($n in @('msedge.exe', 'chrome.exe')) { $c = Get-Command $n -ErrorAction SilentlyContinue; if ($c) { $exes += $c.Source } }
-    $pf86 = [Environment]::GetFolderPath('ProgramFilesX86')
-    $exes += @("$pf86\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "$pf86\Google\Chrome\Application\chrome.exe")
-    foreach ($e in $exes) {
-        if ($e -and (Test-Path $e)) {
-            try {
-                $script:UiProc = Start-Process -FilePath $e -ArgumentList @("--app=$url", "--user-data-dir=$profileDir", '--window-size=880,760', '--no-first-run', '--no-default-browser-check') -PassThru
-                return $true
-            } catch { }
-        }
+    # the installer's own window: an app window with a throwaway private profile (never the user's browser profile)
+    $b = Find-Browser
+    if ($b) {
+        try {
+            New-Item -ItemType Directory -Force -Path (Join-Path $profileDir 'Default') | Out-Null
+            $prefs = '{"signin":{"allowed":false,"allowed_on_next_startup":false},"sync":{"requested":false},"browser":{"has_seen_welcome_page":true,"check_default_browser":false}}'
+            try { [IO.File]::WriteAllText((Join-Path $profileDir 'Default\Preferences'), $prefs, (New-Object System.Text.UTF8Encoding($false))) } catch { }
+            $script:UiProc = Start-Process -FilePath $b.Path -ArgumentList (Get-AppWindowArgs $b.Kind $url $profileDir '880,760') -PassThru
+            return $true
+        } catch { }
     }
     return (Open-DefaultBrowser $url)
 }
@@ -695,13 +798,19 @@ if ($gui) {
     Copy-Item $uiPage (Join-Path $script:UiDir 'ui.html') -Force
     $tok = -join ((48..57) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ })
     $port = Start-UiServer $script:UiDir $tok
-    if (-not $port) { Write-Host '  (the installer window could not start; using the saved or default choices)'; $script:UiDir = ''; $gui = $false }
+    if (-not $port) {
+        if ($script:HiddenChild) { Set-ChildState 'ui-failed'; exit 3 }        # the visible copy carries on in its console
+        Write-Host '  (the installer window could not start; using the saved or default choices)'; $script:UiDir = ''; $gui = $false
+    }
     else {
         $script:UiState.version = $AtlasVersion; $script:UiState.installed = $Installed; $script:UiState.installed_version = (Get-InstalledVersion)
         $script:UiState.phase = 'starting'; Ui-Flush
         $url = "http://127.0.0.1:$port/?t=$tok"
-        if (-not (Open-UiWindow $url (Join-Path $UiRoot 'profile'))) { Write-Host "  Open this address in your browser to continue: $url" }
-        else { Write-Host "  The ATLAS Setup window is open. (If you do not see it, open $url )" }
+        if (-not (Open-UiWindow $url (Join-Path $UiRoot 'profile'))) {
+            if ($script:HiddenChild) { Set-ChildState 'ui-failed'; exit 3 }    # nobody could see the address: let the visible copy show it
+            Write-Host "  Open this address in your browser to continue: $url"
+        }
+        else { Write-Host "  The ATLAS Setup window is open. (If you do not see it, open $url )"; Set-ChildState 'ui-up' }
     }
 }
 if ($gui) {

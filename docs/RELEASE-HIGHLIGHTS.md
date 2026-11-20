@@ -1,3 +1,11 @@
+## ATLAS 1.4.2
+
+**Fixes: no more Microsoft Edge "we are now syncing your browsing data" popup, and no console window behind the installer.**
+
+- **No Edge sign-in/sync popup.** ATLAS's window now opens in your default browser if that is Chrome, Edge or Brave, and otherwise prefers Chrome over Edge. It always uses ATLAS's own private browser profile with browser sign-in and sync switched off, and on Edge it also turns off Edge's automatic Microsoft-account sign-in - the thing that showed "...has signed in on this device, so we've also signed you in to Microsoft Edge". The installer window does the same. ATLAS starts with a fresh private profile (your HUD notes and voice settings are carried over); the microphone permission may be asked once more.
+- **No console window behind the installer.** Double-clicking ATLAS-Setup.bat now opens only the setup window (a black window may flash for a moment at the start). If the setup window can't open, setup carries on in the console as before. The background run is logged to `%TEMP%\ATLAS-setup.log`.
+- The ATLAS taskbar icon and app ID from 1.4.1 keep working with the new profile.
+
 ## ATLAS 1.4.1
 
 **Fixes: Hermes keeps running, an old bridge can no longer get in the way, Settings is always one click (or one key) away, links open in your default browser, and the taskbar shows the ATLAS icon.**

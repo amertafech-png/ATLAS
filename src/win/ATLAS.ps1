@@ -70,7 +70,7 @@ function Start-AtlasBridge {
 function Get-AppWindowPid([string]$appdata) {
     # the browser's main process for ATLAS's private profile folder (the one that owns the visible window)
     try {
-        $procs = Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe'" -ErrorAction Stop
+        $procs = Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe' OR Name='brave.exe'" -ErrorAction Stop
         foreach ($p in $procs) {
             $cl = [string]$p.CommandLine
             if ($cl.Contains($appdata) -and -not $cl.Contains('--type=')) {
@@ -172,19 +172,69 @@ function Wait-AtlasWindowIdentity([string]$appdata) {
     }
     return $false
 }
-function Find-Browser {
+# ---- the app window's browser ----
+# Order: the user's DEFAULT browser if it is Chromium-based (Chrome / Edge / Brave), else Chrome, else Edge, else Brave.
+# Chrome is preferred over Edge because Edge signs a new profile in with the Windows Microsoft account ("implicit sign-in") and
+# shows "We are now syncing your browsing data ... we've also signed you in to Microsoft Edge" in the ATLAS window.
+function Get-DefaultBrowserKind {
+    foreach ($proto in @('https', 'http')) {
+        try {
+            $id = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$proto\UserChoice" -ErrorAction Stop).ProgId
+            if ($id -like 'ChromeHTML*') { return 'chrome' }
+            if ($id -like 'MSEdgeHTM*') { return 'msedge' }
+            if ($id -like 'BraveHTML*') { return 'brave' }
+            if ($id) { return '' }                                 # Firefox etc.: not usable for an app window
+        } catch { }
+    }
+    return ''
+}
+function Find-BrowserExe([string]$kind) {
+    $exe = "$kind.exe"
     $cands = @()
-    foreach ($exe in @('msedge.exe', 'chrome.exe')) {
-        foreach ($hive in @('HKLM', 'HKCU')) {
-            try { $v = (Get-ItemProperty "${hive}:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$exe" -ErrorAction Stop).'(default)'; if ($v) { $cands += $v } } catch { }
-        }
+    foreach ($hive in @('HKCU', 'HKLM')) {
+        try { $v = (Get-ItemProperty "${hive}:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$exe" -ErrorAction Stop).'(default)'; if ($v) { $cands += $v.Trim('"') } } catch { }
     }
     $pf86 = ${env:ProgramFiles(x86)}
-    $cands += @("$pf86\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
-                "$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "$pf86\Google\Chrome\Application\chrome.exe",
-                "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe")
-    foreach ($c in $cands) { if ($c -and (Test-Path $c)) { return $c } }
+    switch ($kind) {
+        'chrome' { $cands += @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "$pf86\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") }
+        'msedge' { $cands += @("$pf86\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") }
+        'brave'  { $cands += @("$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe", "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe") }
+    }
+    foreach ($c in $cands) { if ($c -and (Test-Path -LiteralPath $c)) { return $c } }
     return $null
+}
+function Find-Browser {
+    $order = @()
+    $def = Get-DefaultBrowserKind
+    if ($def) { $order += $def }
+    foreach ($k in @('chrome', 'msedge', 'brave')) { if ($order -notcontains $k) { $order += $k } }
+    foreach ($k in $order) { $p = Find-BrowserExe $k; if ($p) { return @{ Path = $p; Kind = $k } } }
+    return $null
+}
+# Switches for ATLAS's app windows (keep in sync with installer-body.ps1 Get-AppWindowArgs; tools/check-app-window.sh checks it).
+# A private profile (never the user's own), no first-run / default-browser / sign-in prompts, no sync, nothing left running in the
+# background. Edge only: switch off its implicit Microsoft-account sign-in (the sync popup) - --disable-sync alone does not.
+# Chromium only honours ONE --disable-features switch, so all features go in one.
+function Get-AppWindowArgs([string]$kind, [string]$url, [string]$profileDir, [string]$size) {
+    $a = @("--app=$url", "--user-data-dir=`"$profileDir`"", "--window-size=$size", '--no-first-run', '--no-default-browser-check',
+           '--disable-sync', '--disable-signin-promo', '--disable-background-mode', '--no-service-autorun', '--autoplay-policy=no-user-gesture-required')
+    if ($kind -eq 'msedge') { $a += '--disable-features=msImplicitSignin,msEdgeImplicitSignin,msIdentityImplicitSignin,msEdgeSyncConsent' }
+    return $a
+}
+# New private profiles start with browser sign-in switched off (Chromium/Edge "signin.allowed"), so Edge has nothing to sign in to.
+function Initialize-AppProfile([string]$profileDir, [string]$oldProfile) {
+    $def = Join-Path $profileDir 'Default'
+    $fresh = -not (Test-Path -LiteralPath (Join-Path $def 'Preferences'))
+    New-Item -ItemType Directory -Force -Path $def | Out-Null
+    if ($fresh) {
+        # keep the HUD's own saved bits (notes, voice on/off) from the profile 1.4.1 and older used
+        if ($oldProfile) {
+            $ols = Join-Path $oldProfile 'Default\Local Storage'
+            if (Test-Path -LiteralPath $ols) { try { Copy-Item -LiteralPath $ols -Destination $def -Recurse -Force -ErrorAction Stop } catch { } }
+        }
+        $prefs = '{"signin":{"allowed":false,"allowed_on_next_startup":false},"sync":{"requested":false},"browser":{"has_seen_welcome_page":true,"check_default_browser":false},"profile":{"default_content_setting_values":{"notifications":2}}}'
+        try { [IO.File]::WriteAllText((Join-Path $def 'Preferences'), $prefs, (New-Object System.Text.UTF8Encoding($false))) } catch { }
+    }
 }
 
 switch ($Mode) {
@@ -203,7 +253,9 @@ switch ($Mode) {
         try { [void](Start-AtlasBridge) } finally { if ($held) { try { $mutex.ReleaseMutex() } catch { } } }
     }
     default {
-        $appdata = Join-Path $Data 'appdata'
+        # 1.4.2: a NEW private browser profile. The old one (appdata) may already be signed in to Edge by Edge's implicit sign-in.
+        $appdata = Join-Path $Data 'browser-profile'
+        $oldProfile = Join-Path $Data 'appdata'
         # one launch at a time: a second double-click waits here instead of starting a duplicate bridge or window
         $mutex = New-Object System.Threading.Mutex($false, 'Local\ATLAS-Launcher')
         $held = $false
@@ -214,10 +266,8 @@ switch ($Mode) {
         } finally { if ($held) { try { $mutex.ReleaseMutex() } catch { } } }
         $browser = Find-Browser
         if ($browser) {
-            New-Item -ItemType Directory -Force -Path $appdata | Out-Null
-            $appArgs = @("--app=$Url", "--user-data-dir=`"$appdata`"", '--window-size=1600,900', '--no-first-run',
-                      '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required')
-            Start-Process -FilePath $browser -ArgumentList $appArgs
+            Initialize-AppProfile $appdata $oldProfile
+            Start-Process -FilePath $browser.Path -ArgumentList (Get-AppWindowArgs $browser.Kind $Url $appdata '1600,900')
             [void](Wait-AtlasWindowIdentity $appdata)
         } else {
             Start-Process $Url                                       # no Edge/Chrome found: default browser tab
