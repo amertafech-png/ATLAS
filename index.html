@@ -1050,7 +1050,7 @@ async function onRecStop(){
     const r=await fetch('/api/listen',{method:'POST',headers:{'Content-Type':blob.type||'audio/webm'},body:blob});
     const j=await r.json();
     if(!r.ok||j.ok===false)throw new Error(j.error||('HTTP '+r.status));
-    const t=(j.transcript||'').trim();
+    let t=(j.transcript||'').trim();
     log('Heard ('+j.device+', '+j.ms+' ms)');
     if(!t){setOrb('idle');setCaption(an(),"I didn't catch that — try again.");cap.classList.add('dimmed');return}
     if(REC.wake){                     /* started by the wake word: drop the phrase itself if it leaked into the recording */
@@ -1499,7 +1499,7 @@ function renderAiTab(){
   await pollHealth();setOrb('idle');if(BR.online){loadHistory();loadFeatures();startEvents();loadUpdate();setInterval(loadUpdate,600000)}
   setInterval(pollHealth,4000);setInterval(pollSystem,2000);pollSystem();
 })();
-window.__hud={openSetup,SU,ATLAS,openMod,FT,ftUpdate,askHermes,look,voiceToggle};
+window.__hud={openSetup,SU,ATLAS,openMod,FT,ftUpdate,askHermes,look,voiceToggle,state:()=>({online:BR.online,orb:orbMode,msgs:MSGS.slice(),caption:cap.textContent,captionErr:cap.classList.contains('err')})};   /* read-only snapshot for the dev tests */
 })();
 </script>
 </body>

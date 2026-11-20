@@ -37,6 +37,9 @@ jobs:
             bash -n "$f"
           done
 
+      - name: JavaScript lint (const reassignment etc.)
+        run: bash tools/check-js.sh
+
       - name: PowerShell parse
         run: |
           set -euo pipefail
