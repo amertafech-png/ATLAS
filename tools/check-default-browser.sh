@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 bad=0
 # 1. a browser executable started without --app (would open a link in Edge/Chrome instead of the default browser)
 while IFS= read -r line; do
-  case "$line" in *--app=*|*'$appArgs'*) ;; *) echo "browser exe started for something other than an app window: $line"; bad=1 ;; esac
+  case "$line" in *--app=*|*'$appArgs'*|*Get-AppWindowArgs*) ;; *) echo "browser exe started for something other than an app window: $line"; bad=1 ;; esac
 done < <(grep -nE 'Start-Process[^#]*-FilePath[^#]*\$(e|browser)\b' src/win/*.ps1 || true)
 # 2. no literal web links handed to Start-Process directly (use Open-DefaultBrowser), no msedge: / microsoft-edge: link schemes
 if grep -nE "Start-Process +['\"]https?://" src/win/*.ps1; then echo "use Open-DefaultBrowser for web links"; bad=1; fi

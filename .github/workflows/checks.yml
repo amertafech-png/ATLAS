@@ -96,6 +96,14 @@ jobs:
       - name: Links open in the default browser; taskbar AppUserModelID matches
         run: bash tools/check-default-browser.sh
 
+      - name: App windows use a private profile, no Edge implicit sign-in
+        run: |
+          bash tools/check-app-window.sh
+          python bridge/dev/test_app_window.py
+
+      - name: Installer hides its console in window mode
+        run: bash tools/check-installer-console.sh
+
       - name: No Windows Script Host
         run: bash tools/check-no-wsh.sh
       - name: No leftover old product name  # legacy-modi

@@ -46,8 +46,11 @@ if [ "$(uname -s)" = Darwin ]; then
   for name in "Google Chrome" "Microsoft Edge" "Brave Browser" "Chromium" "Vivaldi" "Opera"; do
     if [ -d "/Applications/$name.app" ] || [ -d "$HOME/Applications/$name.app" ]; then
       mkdir -p "$DATA/appdata"
+      # private ATLAS profile; no sign-in / sync prompts. Edge: also no implicit Microsoft-account sign-in (its "syncing" popup)
+      extra=""; [ "$name" = "Microsoft Edge" ] && extra="--disable-features=msImplicitSignin,msEdgeImplicitSignin,msIdentityImplicitSignin,msEdgeSyncConsent"
       exec open -n -a "$name" --args "--app=$URL" "--user-data-dir=$DATA/appdata" "--window-size=1600,900" \
-           --no-first-run --no-default-browser-check --autoplay-policy=no-user-gesture-required
+           --no-first-run --no-default-browser-check --disable-sync --disable-signin-promo --disable-background-mode \
+           --autoplay-policy=no-user-gesture-required $extra
     fi
   done
   exec open "$URL"          # no Chromium-based browser: default browser tab (Safari: File > Add to Dock for an app-like window)

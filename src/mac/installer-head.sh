@@ -211,7 +211,9 @@ ui_start() {   # opens the installer window; returns 1 if it cannot (then the ch
     local b opened=0
     for b in "Google Chrome" "Microsoft Edge" "Brave Browser" "Chromium"; do
       if [ -d "/Applications/$b.app" ] || [ -d "$HOME/Applications/$b.app" ]; then
-        open -na "$b" --args "--app=$url" "--user-data-dir=$UI_DIR/profile" --window-size=880,760 --no-first-run --no-default-browser-check >/dev/null 2>&1 && { opened=1; break; }
+        local extra=""; [ "$b" = "Microsoft Edge" ] && extra="--disable-features=msImplicitSignin,msEdgeImplicitSignin,msIdentityImplicitSignin,msEdgeSyncConsent"
+        open -na "$b" --args "--app=$url" "--user-data-dir=$UI_DIR/profile" --window-size=880,760 --no-first-run --no-default-browser-check \
+             --disable-sync --disable-signin-promo --disable-background-mode $extra >/dev/null 2>&1 && { opened=1; break; }
       fi
     done
     [ $opened = 1 ] || open "$url" >/dev/null 2>&1
