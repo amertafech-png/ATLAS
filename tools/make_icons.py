@@ -51,6 +51,8 @@ def master():
 m = master()
 os.makedirs(OUT, exist_ok=True)
 m.resize((256, 256), Image.LANCZOS).save(os.path.join(OUT, 'atlas.png'))
+m.resize((192, 192), Image.LANCZOS).save(os.path.join(OUT, 'atlas-192.png'))   # web-app manifest icons (HUD window / taskbar)
+m.resize((512, 512), Image.LANCZOS).save(os.path.join(OUT, 'atlas-512.png'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import icolib
 icolib.write_ico(m, os.path.join(OUT, 'atlas.ico'))

@@ -58,12 +58,14 @@ PROVIDER_LABELS = {"openai-codex": "ChatGPT", "xai-oauth": "Grok", "xai": "Grok"
 KEY_RE = re.compile(r"^[A-Za-z0-9._~+/=:\-]{8,512}$")
 
 
-def _flags(detached=False):
+def _flags(detached=False, breakaway=False):
     if not IS_WIN:
         return {"start_new_session": True} if detached else {}
     f = 0x08000000                                    # CREATE_NO_WINDOW
     if detached:
         f |= 0x00000008 | 0x00000200                  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    if breakaway:
+        f |= 0x01000000                               # CREATE_BREAKAWAY_FROM_JOB: survives the bridge (and its job object) going away
     return {"creationflags": f}
 
 
@@ -769,7 +771,10 @@ class HermesManager:
                 logd = self.home() / "logs"
                 logd.mkdir(parents=True, exist_ok=True)
                 lf = open(logd / "atlas-gateway.log", "ab")
-                subprocess.Popen([exe, "gateway", "run"], stdin=subprocess.DEVNULL, stdout=lf, stderr=lf, env=self.cli_env(), **_flags(detached=True))
+                try:     # no console window, not tied to the bridge or to any terminal - closing a window can't stop it
+                    subprocess.Popen([exe, "gateway", "run"], stdin=subprocess.DEVNULL, stdout=lf, stderr=lf, env=self.cli_env(), **_flags(detached=True, breakaway=True))
+                except OSError:  # the job ATLAS runs in forbids breakaway: start it without that flag
+                    subprocess.Popen([exe, "gateway", "run"], stdin=subprocess.DEVNULL, stdout=lf, stderr=lf, env=self.cli_env(), **_flags(detached=True))
             except OSError as e:
                 log("Could not start Hermes: %s" % e)
                 return False

@@ -189,6 +189,13 @@ function Stop-UiServer {
     try { if ($script:UiPs) { $script:UiPs.Stop(); $script:UiPs.Runspace.Close() } } catch { }
     try { if ($script:UiProc -and -not $script:UiProc.HasExited) { [void]$script:UiProc.CloseMainWindow() } } catch { }
 }
+# web links (python.org etc.) go to the user's DEFAULT browser: Start-Process <url> = ShellExecute "open" on the https handler,
+# never msedge.exe/chrome.exe directly (those are only used for the installer's own local app window below)
+function Open-DefaultBrowser([string]$url) {
+    if ($url -notmatch '^https?://[^\s"]+$') { return $false }
+    try { Start-Process $url; return $true } catch { }
+    try { Start-Process -FilePath (Join-Path $env:WINDIR 'System32\rundll32.exe') -ArgumentList @('url.dll,FileProtocolHandler', $url); return $true } catch { return $false }
+}
 function Open-UiWindow([string]$url, [string]$profileDir) {
     $exes = @()
     foreach ($n in @('msedge.exe', 'chrome.exe')) { $c = Get-Command $n -ErrorAction SilentlyContinue; if ($c) { $exes += $c.Source } }
@@ -202,7 +209,7 @@ function Open-UiWindow([string]$url, [string]$profileDir) {
             } catch { }
         }
     }
-    try { Start-Process $url; return $true } catch { return $false }
+    return (Open-DefaultBrowser $url)
 }
 function Read-Answer {
     $f = Join-Path $script:UiDir 'answer.json'
@@ -225,6 +232,7 @@ function Wait-Answer([int]$maxSeconds = 1800) {
 $script:UiSub = 0.0
 # ---- shortcuts without Windows Script Host: .lnk files are written through the Windows shell-link API (IShellLink) ----
 $PsExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$AtlasAppId = 'ATLAS.CommandInterface'   # Windows AppUserModelID; must match $AtlasAppId in win\ATLAS.ps1
 function Initialize-LinkApi {
     if ('AtlasLnk' -as [type]) { return $true }
     try {
@@ -264,10 +272,27 @@ public static class AtlasLnk {
         void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
         void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string ppszFileName);
     }
+    [StructLayout(LayoutKind.Sequential, Pack = 4)] private struct PropKey { public Guid fmtid; public uint pid; }
+    [StructLayout(LayoutKind.Explicit)] private struct PropVar { [FieldOffset(0)] public ushort vt; [FieldOffset(8)] public IntPtr p; [FieldOffset(16)] public IntPtr pad; }
+    [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
+    private interface IPropertyStore {
+        void GetCount(out uint c);
+        void GetAt(uint i, out PropKey k);
+        void GetValue(ref PropKey k, out PropVar v);
+        void SetValue(ref PropKey k, ref PropVar v);
+        void Commit();
+    }
+    // System.AppUserModel.ID: the ATLAS window sets the same ID (ATLAS.ps1), so Windows groups it under this shortcut and shows its icon
+    private static void SetAppId(object link, string appId) {
+        IPropertyStore ps = (IPropertyStore)link;
+        PropKey k = new PropKey(); k.fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"); k.pid = 5;
+        PropVar v = new PropVar(); v.vt = 31; v.p = Marshal.StringToCoTaskMemUni(appId);
+        try { ps.SetValue(ref k, ref v); ps.Commit(); } finally { Marshal.FreeCoTaskMem(v.p); }
+    }
     [DllImport("shell32.dll")] private static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
     // tell Explorer that icons changed (SHCNE_ASSOCCHANGED) so shortcuts that showed a blank page get redrawn
     public static void Refresh() { SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero); }
-    public static void Create(string lnk, string target, string args, string workDir, string icon, string desc, int showCmd) {
+    public static void Create(string lnk, string target, string args, string workDir, string icon, string desc, int showCmd, string appId) {
         IShellLinkW l = (IShellLinkW)new ShellLinkCoClass();
         l.SetPath(target);
         l.SetArguments(args);
@@ -275,6 +300,7 @@ public static class AtlasLnk {
         l.SetDescription(desc);
         l.SetShowCmd(showCmd);
         if (!string.IsNullOrEmpty(icon)) { l.SetIconLocation(icon, 0); }
+        if (!string.IsNullOrEmpty(appId)) { try { SetAppId(l, appId); } catch { } }
         ((IPersistFileW)l).Save(lnk, true);
     }
     public static string[] Read(string lnk) {
@@ -306,7 +332,9 @@ function New-Shortcut([string]$path, [string]$mode, [string]$desc) {
         # IconLocation = the installed atlas.ico (absolute path, no ",0" glued on - SetIconLocation takes the index as its own argument; icon index 0)
         $ico = Join-Path $AppDir 'assets\atlas.ico'
         if (-not (Test-Path -LiteralPath $ico)) { $ico = '' }
-        [AtlasLnk]::Create($path, $PsExe, (Get-AtlasLaunchArgs $mode), $AppDir, $ico, $desc, 7)
+        # the app shortcuts carry ATLAS's AppUserModelID (same as the window, see ATLAS.ps1) so the taskbar shows the ATLAS icon, not a globe
+        $appId = $(if ($mode -eq 'Launch') { $AtlasAppId } else { '' })
+        [AtlasLnk]::Create($path, $PsExe, (Get-AtlasLaunchArgs $mode), $AppDir, $ico, $desc, 7, $appId)
         return $true
     } catch { return $false }
 }
@@ -535,7 +563,7 @@ function Run-Install($o, [string]$mode) {
                 $rc = Run-Logged 'winget' @('install', '-e', '--id', 'Python.Python.3.12', '--accept-package-agreements', '--accept-source-agreements')
                 Refresh-Path; $Py = Find-Python
             } else {
-                Start-Process 'https://www.python.org/downloads/windows/'
+                [void](Open-DefaultBrowser 'https://www.python.org/downloads/windows/')
                 Fail-Install 'python' 'Python 3.11+ is needed. python.org was opened: install Python 3.12 (tick "Add python.exe to PATH"), then run this installer again.'
             }
         }

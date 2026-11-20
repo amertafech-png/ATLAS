@@ -3,8 +3,15 @@
 <head>
 <meta charset="utf-8">
 <title>ATLAS</title>
-<link rel="icon" type="image/png" href="/atlas.png">
+<link rel="icon" href="/atlas.ico" sizes="16x16 24x24 32x32 48x48 64x64 128x128 256x256" type="image/x-icon">
+<link rel="icon" type="image/png" sizes="256x256" href="/atlas.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/atlas-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/atlas-512.png">
+<link rel="apple-touch-icon" href="/atlas-192.png">
 <link rel="shortcut icon" href="/favicon.ico">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#02080f">
+<meta name="application-name" content="ATLAS">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 :root{
@@ -942,11 +949,22 @@ function sceneFor(text){const t=String(text||'').toLowerCase();
   return /\b(weather|forecast|temperature|rain|raining|snow|umbrella|humid|how (?:hot|cold)|wind)\b/.test(t)?'weather':/\b(play|music|song|songs|playlist|spotify|album|tune|tunes)\b/.test(t)?'music':/\b(search|look up|google|find out|research|news|headlines|who is|who was|latest)\b/.test(t)?'searching':''}
 function setScene(sc){orbScene=sceneOn?sc:'';sceneUntil=orbScene?Infinity:0;if(orbScene)document.body.dataset.scene=orbScene;else delete document.body.dataset.scene}
 const ORB_T={idle:0,listening:1,transcribing:.5,thinking:.45,speaking:.85};
+/* External links (sign-in pages, "Get a key", downloads) open in the user's DEFAULT browser, not in the Edge/Chrome app window
+   this HUD runs in: the bridge hands them to the OS (os.startfile / open / xdg-open). Falls back to a normal new tab if that fails. */
+const _winOpen=window.open.bind(window);
+function isExternal(u){try{const x=new URL(u,location.href);return /^https?:$/.test(x.protocol)&&x.host!==location.host}catch(_){return false}}
+async function openExternal(u){const href=new URL(u,location.href).href;
+  try{const r=await fetch('/api/open-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:href})});if(r.ok)return true}catch(_){}
+  _winOpen(href,'_blank','noopener');return false}
+window.open=function(u,t,f){if(u&&isExternal(String(u))){openExternal(String(u));return null}return _winOpen(u,t,f)};
+document.addEventListener('click',e=>{const a=e.target&&e.target.closest&&e.target.closest('a[href]');if(!a||e.defaultPrevented)return;
+  if(isExternal(a.getAttribute('href'))){e.preventDefault();openExternal(a.getAttribute('href'))}},true);
 cv.addEventListener('click',()=>voiceToggle());
 document.getElementById('mic').addEventListener('click',()=>voiceToggle());
 document.getElementById('mic2').addEventListener('click',()=>voiceToggle());
 cv.addEventListener('keydown',e=>{if(e.code==='Enter'){e.preventDefault();voiceToggle()}});
 window.addEventListener('keydown',e=>{const tg=e.target.tagName;
+  if((e.ctrlKey||e.metaKey)&&e.key===','){e.preventDefault();if(SU.open)closeSetup();ATLAS.openSettings();return}
   if(e.code==='Space'&&tg!=='INPUT'&&tg!=='TEXTAREA'&&tg!=='BUTTON'){e.preventDefault();voiceToggle()}
   if(e.key==='Escape'){if(CONV.state==='arming')convEnd('Esc');else if(orbMode==='listening')voiceCancel();else closeOv();}});
 const N=96;
@@ -1277,6 +1295,7 @@ function applyLocal(r){
   if(ch.length){ED=null;loadSettings();if(ovMode==='settings')renderSettings(true)}
   if(r.ui&&r.ui.open==='ai'){SU.sel=r.ui.provider||'';openSetup({ai:true})}
   if(r.ui&&r.ui.open==='modules')openModules(r.ui.module||null);
+  if(r.ui&&r.ui.open==='settings'){if(SU.open)closeSetup();ATLAS.openSettings()}
 }
 /* ---- ask Hermes (text) ---- */
 async function askHermes(text,opt){
@@ -1576,6 +1595,7 @@ async function loadHistory(){
    ===================================================================== */
 const ATLAS_EVT={};let FEATS=[];
 const ATLAS={
+  openUrl(u){return openExternal(u)},  /* open an http(s) link in the default browser */
   on(type,fn){(ATLAS_EVT[type]=ATLAS_EVT[type]||[]).push(fn)},
   dispatch(msg){(ATLAS_EVT[msg.type]||[]).forEach(f=>{try{f(msg)}catch(e){console.error(e)}})},
   speak:(t)=>speak(t),ask:(t,o)=>askHermes(t,o),log:(m)=>log(m),post,api,setOrb,
@@ -1940,6 +1960,7 @@ function renderSetup(){
     h='<h4>▸ ADD-ON MODULES</h4>'+suCrumbs(v)+'<p>'+esc(MODS.explain||'Add-on modules are extra programs that give '+A+' new abilities. They run with the same access as '+A+', so a new one never turns on until it has been scanned, second-opinioned by your own AI, and you press Approve.')+'</p><p class="note">Recommended: leave them on. You can switch them off any time in Settings or by saying “turn off add-on modules”.</p>'+
       '<div class="row"><button class="btn sel" data-su="addonson">Keep add-ons on (recommended)</button><button class="btn" data-su="addonsoff">Turn add-ons off</button></div>';
   }
+  h+='<div class="row" style="justify-content:flex-end;margin-top:1.2vh"><button class="btn" data-su="opensettings" title="Ctrl+,">Open Settings</button></div>';
   box.innerHTML=h;
   if(v==='about'){if(!ED)ED={sports:JSON.parse(JSON.stringify((PROF&&PROF.sports)||[]))};drawSportsEditor()}
   box.querySelectorAll('[data-recmodel]').forEach(b=>b.onclick=()=>{const i=document.getElementById('supull');if(i)i.value=b.dataset.recmodel});
@@ -1950,6 +1971,7 @@ function renderSetup(){
 async function suAct(a){
   const val=id=>{const e=document.getElementById(id);return e?e.value.trim():''};
   if(a==='later'){closeSetup();return}
+  if(a==='opensettings'){closeSetup();ATLAS.openSettings();return}
   if(a==='install'){SU.job=null;return suRun('/api/setup/install')}
   if(a==='fix'){SU.job=null;SU.autoDone=true;return suRun('/api/setup/fix')}
   if(a==='cancel'){if(SU.job)try{await post('/api/setup/job/'+SU.job.id+'/cancel',{})}catch(e){}return}

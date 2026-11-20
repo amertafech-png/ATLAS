@@ -1,3 +1,15 @@
+## ATLAS 1.4.1
+
+**Fixes: Hermes keeps running, an old bridge can no longer get in the way, Settings is always one click (or one key) away, links open in your default browser, and the taskbar shows the ATLAS icon.**
+
+- **Hermes restarts by itself.** If Hermes (the AI engine ATLAS uses) stops - for example because the PowerShell window running `hermes gateway run` was closed - ATLAS starts it again in the background when you next talk to it, then answers. A background check also restarts it every so often (waiting longer between tries if it keeps failing). On Windows the gateway is started with no window, separate from ATLAS, so closing a window no longer stops it.
+- **Plain-words errors.** Instead of "Can't reach the Hermes API ... ClientConnectorError", ATLAS says what happened ("Hermes had stopped - I'm starting it again") and offers **Fix it**.
+- **The launcher replaces an old bridge.** If an older ATLAS/MODI bridge (for example 1.1.x) is still running on ATLAS's port, the Windows launcher stops it and starts the version you installed, instead of quietly talking to the old one.   <!-- legacy-modi -->
+- **Settings is always reachable.** Click **SETTINGS** at the right end of the bottom bar, press **Ctrl+,** (Cmd+, on a Mac), or say "open settings" - this now works even when Hermes is not running. The "Connect Hermes" card has an **Open Settings** button too.
+- **Links open in your default browser.** Sign-in pages, "Get a key" links and downloads now open in the browser you chose as your default (Chrome, Firefox, Edge, ...) on Windows and Mac, instead of inside the Edge/Chrome window ATLAS runs in. The ATLAS window itself still uses its own app window.
+- **ATLAS icon on the Windows taskbar.** The ATLAS window now shows the ATLAS icon on the taskbar instead of a generic globe, and groups with the ATLAS Start Menu shortcut (run the installer once, or update, so the shortcuts get the matching ID).
+- **Troubleshooting docs** for finding Settings, a stopped Hermes gateway, and an old bridge that is still running (see the user guide).
+
 ## ATLAS 1.4.0
 
 **Swappable panels, a calendar, live scores, reminders and timers, safe add-on modules, app and game launching, and skins.**

@@ -380,6 +380,8 @@ class Settings:
         if re.fullmatch(r"(?:what are|what is|what's|whats|show|list|read|tell me|give me)(?: me)?(?: out)?(?: all)?(?: of)?(?: my| the| your)?(?: current)? settings(?: are| right now)?", low) \
                 or low in ("what are my settings", "settings", "what settings do i have", "read my settings"):
             return Intent(op="list")
+        if re.fullmatch(r"(?:please )?(?:open|bring up|pull up|go to|take me to|launch|show(?: me)? the)(?: up)?(?: the| my| your)? settings(?: panel| page| window| menu| screen| tab)?|(?:open|show) (?:the )?settings (?:panel|page|window|menu|screen|tab)|where (?:are|is) (?:the |my )?settings|how do i (?:open|get to|find) (?:the )?settings", low):
+            return Intent(op="open_ui")
         if re.fullmatch(r"what (?:can|could) i (?:change|set|control|configure)(?: by voice| with my voice)?|what settings can i (?:change|set|control)|what can i say(?: to change settings)?|help with settings", low):
             return Intent(op="help")
 
@@ -714,6 +716,8 @@ class Settings:
         e = self.env
         if op == "list":
             return self._r(self._overview())
+        if op == "open_ui":
+            return self._r("Opening Settings. You can also click Settings at the right end of the bar at the bottom, or press Ctrl and comma.", [], ui={"open": "settings"})
         if op == "help":
             return self._r("You can say things like: turn off the wake word, mute, turn off conversation mode, set the listening window to 10 seconds, change your name to Nova, "
                            "set my city to Dallas, remove soccer, stop following Juventus, switch to Claude, hide the weather panel, turn off automatic updates, "

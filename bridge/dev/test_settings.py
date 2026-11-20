@@ -359,5 +359,16 @@ r = say(S, "set the skin to plaid"); check("skin: an unknown skin is refused wit
 r = say(S, "go back to the original skin") or say(S, "set the skin to default"); check("skin: back to the original", env.cfg["prefs"].get("skin") == "cyan", (r, env.cfg.get("prefs")))
 check("skin: shows in prefs_view for the HUD", S.prefs_view()["skin"] == "cyan" and S.prefs_view()["task_animations"] is True)
 r = say(S, "turn off task animations"); check("animations: can be turned off", env.cfg["prefs"].get("task_animations") is False and S.prefs_view()["task_animations"] is False, (r, env.cfg.get("prefs")))
+# ------------------------------------------------------------------ v1.4.1: "open settings" is answered locally (works with Hermes down)
+env, S = fresh()
+for t in ("open settings", "Open the settings panel", "please open my settings", "where are my settings", "how do I open settings", "take me to settings", "show me the settings page"):
+    it = S.parse(t)
+    check("open_ui: %r" % t, it is not None and it.get("op") == "open_ui", it)
+r = say(S, "open settings")
+check("open settings -> ui.open=settings and tells where the button is", isinstance(r, dict) and (r.get("ui") or {}).get("open") == "settings" and "Ctrl" in str(r), r)
+for t in ("show settings", "what are my settings"):
+    it = S.parse(t)
+    check("still lists, not open_ui: %r" % t, it is None or it.get("op") != "open_ui", it)
+
 print("FAILED: %s" % fails if fails else "ALL PASSED")
 sys.exit(1 if fails else 0)

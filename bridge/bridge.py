@@ -173,6 +173,7 @@ def load_config():
 
 CFG = load_config()
 
+import atlas_browser  # noqa: E402  (links open in the user's default browser)
 import atlas_calendar  # noqa: E402  (calendar panel: local .ics files and secret links)
 import atlas_features  # noqa: E402  (feature framework, see atlas_features.py)
 import atlas_hermes  # noqa: E402  (finds / installs / connects Hermes, see atlas_hermes.py)
@@ -380,6 +381,18 @@ def _content_text(content):
     return ""
 
 
+def _unreachable_msg(tried):
+    """What to say when Hermes (the AI engine ATLAS talks to) is not answering - plain words, and what to do."""
+    if not HM.find_cli():
+        return "Hermes, the AI engine I use, isn't installed on this computer. Press Fix it and I'll install it."
+    if not (HM.resolve_api_key() and HM.api_enabled()):
+        return "Hermes isn't connected to me yet. Press Fix it and I'll connect it."
+    if tried or os.getenv("ATLAS_NO_BOOT") or not CFG["hermes"].get("autostart", True):
+        return ("Hermes, the AI engine I use, isn't running and didn't start. Press Fix it to try again. "
+                "If it still fails, the details are in %s." % (HM.home() / "logs"))
+    return "Hermes, the AI engine I use, isn't running. I'm starting it - try again in a few seconds, or press Fix it."
+
+
 async def hermes_api(user_content, session_id=None, system=None):
     """user_content: str or OpenAI content-part list. Returns reply text.  session_id/system: a separate one-off conversation (used for add-on reviews)."""
     h = CFG["hermes"]
@@ -391,7 +404,10 @@ async def hermes_api(user_content, session_id=None, system=None):
                "X-Hermes-Session-Id": session_id or STATE["session_id"]}
     sysmsg = system or system_prompt()
     res = None
-    for attempt in (1, 2):
+    revived = False
+    attempt = 0
+    while attempt < 2:
+        attempt += 1
         body = {"model": h["model"], "stream": False,
                 "messages": [{"role": "system", "content": sysmsg}, {"role": "user", "content": user_content}]}
         try:
@@ -403,7 +419,17 @@ async def hermes_api(user_content, session_id=None, system=None):
             raise HermesError("Hermes took too long to answer (timeout).", 504)
         except ClientError:
             HM.invalidate()
-            raise HermesError("Can't reach Hermes right now. Press Fix it and I'll start it.", 503, "setup")
+            if not revived:
+                revived = True
+                job = asyncio.ensure_future(revive_hermes("chat", min_gap=10))   # keeps going in the background if it takes longer
+                try:
+                    ok = await asyncio.wait_for(asyncio.shield(job), 25)
+                except asyncio.TimeoutError:
+                    raise HermesError("Hermes, the AI engine I use, had stopped. I'm starting it again - ask me once more in a few seconds.", 503, "setup")
+                if ok:                         # Hermes had stopped (e.g. its window was closed); it is running again - ask once more
+                    attempt -= 1
+                    continue
+            raise HermesError(_unreachable_msg(revived), 503, "setup")
         res = atlas_hermes.interpret_chat(code, txt, key, limit=None)
         if res.get("kind") != "tool_echo":
             break
@@ -424,7 +450,7 @@ async def hermes_api(user_content, session_id=None, system=None):
         HM.invalidate()
         raise HermesError("Hermes and I lost our secure link. Press Fix it to reconnect.", 502, "setup")
     if kind == "unreachable":
-        raise HermesError("Can't reach Hermes right now. Press Fix it and I'll start it.", 503, "setup")
+        raise HermesError(_unreachable_msg(revived), 503, "setup")
     if kind == "provider_auth":
         HM.chat_state = "no_provider"
         raise HermesError(res["error"], 502, "setup")
@@ -813,6 +839,23 @@ async def h_icon_png(request):
     return _asset("atlas.png", "image/png")
 
 
+async def h_icon_size(request):
+    return _asset("atlas-%s.png" % request.match_info["size"], "image/png")
+
+
+MANIFEST = {"name": "ATLAS", "short_name": "ATLAS", "id": "/", "start_url": "/", "scope": "/", "display": "standalone",
+            "background_color": "#02080f", "theme_color": "#02080f",
+            "icons": [{"src": "/atlas-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+                      {"src": "/atlas-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+                      {"src": "/atlas.png", "sizes": "256x256", "type": "image/png"},
+                      {"src": "/atlas.ico", "sizes": "16x16 24x24 32x32 48x48 64x64 128x128 256x256", "type": "image/x-icon"}]}
+
+
+async def h_manifest(request):
+    """Web-app manifest: gives the Edge/Chrome app window (and so the Windows taskbar button) the ATLAS name and icon."""
+    return web.json_response(MANIFEST, content_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
+
+
 async def h_quit(request):
     """Stop the bridge (used by the HUD power button and Stop-ATLAS)."""
     print("[bridge] quit requested", flush=True)
@@ -821,6 +864,17 @@ async def h_quit(request):
         raise web.GracefulExit()
     asyncio.get_running_loop().call_later(0.4, _exit)
     return web.json_response({"ok": True})
+
+
+async def h_open_url(request):
+    """Open an http(s) link from the HUD in the user's DEFAULT browser (the HUD window itself is an Edge/Chrome app window)."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa
+        return web.json_response({"ok": False, "error": "bad request"}, status=400)
+    url = str((body or {}).get("url") or "")
+    ok, msg = await asyncio.get_running_loop().run_in_executor(None, atlas_browser.open_default, url)
+    return web.json_response({"ok": ok, "error": "" if ok else msg}, status=200 if ok else 400)
 
 
 async def h_health(request):
@@ -920,6 +974,51 @@ async def h_setup_test(request):
         HM.note_chat_ok()
     lab, model = HM.provider_label()
     return web.json_response({"ok": True, "result": res, "provider": lab, "model": model})
+
+
+def _hermes_should_run():
+    """Hermes is installed, connected (key + API server on) and ATLAS is allowed to start it - so if it is not answering, starting it is the right fix."""
+    return bool(CFG["hermes"].get("autostart", True) and CFG["mode"] == "api" and HM.find_cli() and HM.resolve_api_key() and HM.api_enabled())
+
+
+_revive = {"last": 0.0, "fails": 0, "lock": None}
+
+
+async def revive_hermes(reason, min_gap=45):
+    """Hermes stopped answering (its window was closed, it crashed, the PC woke from sleep): start it again in the background.
+    Throttled; returns True when Hermes answers again."""
+    if os.getenv("ATLAS_NO_BOOT") or not await _in_thread(_hermes_should_run):
+        return False
+    if _revive["lock"] is None:
+        _revive["lock"] = asyncio.Lock()
+    async with _revive["lock"]:
+        if await _in_thread(HM.healthy):
+            return True
+        if time.time() - _revive["last"] < min_gap:
+            return False
+        _revive["last"] = time.time()
+        print("[bridge] Hermes is not answering (%s) - starting it" % reason, flush=True)
+        ok = await _in_thread(HM.start_gateway)
+        _revive["fails"] = 0 if ok else _revive["fails"] + 1
+        HM.invalidate()
+        _health_cache["t"] = 0
+        print("[bridge] Hermes " + ("is up again" if ok else "did not start"), flush=True)
+        return ok
+
+
+async def hermes_watchdog():
+    """Keep Hermes running while ATLAS runs: check every 30 s, restart it with a growing pause (45 s .. 5 min) if it stopped."""
+    await asyncio.sleep(20)
+    while True:
+        try:
+            if not await _in_thread(HM.healthy):
+                gap = min(300, 45 * (2 ** min(_revive["fails"], 3)))
+                await revive_hermes("watchdog", min_gap=gap)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa
+            print("[bridge] Hermes watchdog:", type(e).__name__, e, flush=True)
+        await asyncio.sleep(30)
 
 
 def _hermes_boot():
@@ -1222,12 +1321,15 @@ async def _on_startup(app):
     threading.Thread(target=_hermes_boot, daemon=True, name="atlas-hermes-boot").start()
     await FEATURES.start_enabled()
     app["reminder_task"] = asyncio.create_task(reminder_loop())
+    if not os.getenv("ATLAS_NO_BOOT"):
+        app["hermes_watchdog"] = asyncio.create_task(hermes_watchdog())
 
 
 async def _on_cleanup(app):
-    t = app.get("reminder_task")
-    if t:
-        t.cancel()
+    for k in ("reminder_task", "hermes_watchdog"):
+        t = app.get(k)
+        if t:
+            t.cancel()
     await FEATURES.stop_all()
 
 
@@ -1557,8 +1659,8 @@ def make_app():
     app = web.Application(middlewares=[guard], client_max_size=40 * 1024 * 1024)
     app.add_routes([
         web.get("/", h_index), web.get("/index.html", h_index),
-        web.get("/favicon.ico", h_icon), web.get("/atlas.ico", h_icon), web.get("/atlas.png", h_icon_png),
-        web.post("/api/quit", h_quit),
+        web.get("/favicon.ico", h_icon), web.get("/atlas.ico", h_icon), web.get("/atlas.png", h_icon_png), web.get("/atlas-{size:192|512}.png", h_icon_size), web.get("/manifest.webmanifest", h_manifest),
+        web.post("/api/quit", h_quit), web.post("/api/open-url", h_open_url),
         web.get("/api/health", h_health), web.get("/api/system", h_system),
         web.get("/api/history", h_history), web.post("/api/new", h_new),
         web.post("/api/chat", h_chat), web.post("/api/listen", h_listen),

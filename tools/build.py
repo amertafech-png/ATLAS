@@ -9,12 +9,12 @@ SRC = os.path.join(ROOT, 'src'); DIST = os.path.join(ROOT, 'dist'); os.makedirs(
 
 FILES = {  # archive path -> source path
     'index.html': 'index.html',
-    'assets/atlas.ico': 'assets/atlas.ico', 'assets/atlas.png': 'assets/atlas.png', 'assets/atlas.icns': 'assets/atlas.icns',
+    'assets/atlas.ico': 'assets/atlas.ico', 'assets/atlas.png': 'assets/atlas.png', 'assets/atlas-192.png': 'assets/atlas-192.png', 'assets/atlas-512.png': 'assets/atlas-512.png', 'assets/atlas.icns': 'assets/atlas.icns',
     'bridge/bridge.py': 'bridge/bridge.py', 'bridge/config.json': 'bridge/config.json',
     'bridge/requirements.txt': 'bridge/requirements.txt',
     'bridge/atlas_meta.py': 'bridge/atlas_meta.py', 'bridge/atlas_update.py': 'bridge/atlas_update.py',
     'bridge/atlas_features.py': 'bridge/atlas_features.py', 'bridge/atlas_settings.py': 'bridge/atlas_settings.py', 'bridge/atlas_hermes.py': 'bridge/atlas_hermes.py',
-    'bridge/atlas_layout.py': 'bridge/atlas_layout.py', 'bridge/atlas_calendar.py': 'bridge/atlas_calendar.py', 'bridge/atlas_scores.py': 'bridge/atlas_scores.py', 'bridge/atlas_info.py': 'bridge/atlas_info.py', 'bridge/atlas_reminders.py': 'bridge/atlas_reminders.py', 'bridge/atlas_launch.py': 'bridge/atlas_launch.py', 'bridge/modules/computer_control.py': 'bridge/modules/computer_control.py', 'bridge/atlas_modules.py': 'bridge/atlas_modules.py', 'bridge/modules/MANIFEST.json': 'bridge/modules/MANIFEST.json', 'bridge/modules/_example.py': 'bridge/modules/_example.py',
+    'bridge/atlas_layout.py': 'bridge/atlas_layout.py', 'bridge/atlas_calendar.py': 'bridge/atlas_calendar.py', 'bridge/atlas_scores.py': 'bridge/atlas_scores.py', 'bridge/atlas_info.py': 'bridge/atlas_info.py', 'bridge/atlas_reminders.py': 'bridge/atlas_reminders.py', 'bridge/atlas_launch.py': 'bridge/atlas_launch.py', 'bridge/atlas_browser.py': 'bridge/atlas_browser.py', 'bridge/modules/computer_control.py': 'bridge/modules/computer_control.py', 'bridge/atlas_modules.py': 'bridge/atlas_modules.py', 'bridge/modules/MANIFEST.json': 'bridge/modules/MANIFEST.json', 'bridge/modules/_example.py': 'bridge/modules/_example.py',
     'bridge/modules/wake_word.py': 'bridge/modules/wake_word.py', 'bridge/modules/wake_word.js': 'bridge/modules/wake_word.js',
     'win/ATLAS.ps1': 'src/win/ATLAS.ps1', 
     'mac/atlas-launch.sh': 'src/mac/atlas-launch.sh', 'mac/ui-server.pl': 'src/mac/ui-server.pl',
