@@ -354,6 +354,23 @@ body[data-orb=listening] .orbwrap::after{animation:listenring 1.5s ease-out infi
 body.wake-flash .orbwrap::after{animation:listenring .7s ease-out 2;border-color:var(--c3)}
 body.wake-flash #orb{filter:drop-shadow(0 0 26px var(--c)) brightness(1.2)}
 @keyframes listenring{0%{opacity:.85;transform:scale(.75)}100%{opacity:0;transform:scale(1.45)}}
+.convring{position:absolute;left:50%;top:50%;width:min(64%,62vh);aspect-ratio:1/1;transform:translate(-50%,-50%);pointer-events:none;opacity:0;transition:opacity .25s}
+body[data-conv] .convring{opacity:1}
+.convring svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.convring .trk{fill:none;stroke:rgba(53,224,255,.16);stroke-width:1.6}
+.convring .arc{fill:none;stroke:var(--c3,#5dffb0);stroke-width:2.6;stroke-linecap:round;filter:drop-shadow(0 0 4px var(--c3,#5dffb0))}
+body[data-conv=heard] .convring .arc{stroke:var(--c)}
+.convring .pill{position:absolute;left:50%;bottom:-1.2vh;transform:translateX(-50%);white-space:nowrap;padding:.25vh .9vw;border:1px solid var(--c3,#5dffb0);border-radius:999px;background:rgba(2,12,26,.82);color:var(--c3,#5dffb0);font-family:var(--mono);letter-spacing:.14em;font-size:clamp(9px,.68vw,13px);text-transform:uppercase}
+.convrng{width:clamp(110px,12vw,220px);accent-color:var(--c)}
+.gsel{background:rgba(2,12,26,.8);color:var(--c);border:1px solid var(--faint);font-family:var(--mono);font-size:clamp(10px,.72vw,13px);padding:.2vh .4vw}
+.setgrp{font-family:var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--c);font-size:clamp(10px,.7vw,13px);margin:1.2vh 0 .4vh}
+.sayhelp{margin-top:1vh;font-size:clamp(10px,.72vw,13px);color:var(--dim)}.sayhelp summary{cursor:pointer;color:var(--c)}.sayhelp li{margin:.2vh 0}
+.tg .tl{cursor:text}.tg .tx{cursor:pointer;margin-left:.3vw;opacity:.8}.tg .tx:hover{opacity:1;color:var(--warn)}
+.chip .cx{margin-left:.4vw;opacity:.75}.chip.sel:hover .cx{opacity:1;color:var(--warn)}
+.sportbox .sh{display:flex;align-items:center;gap:.6vw}.sportbox .sx{all:unset;cursor:pointer;margin-left:auto;font-size:.8em;color:var(--dim);border:1px solid var(--faint);padding:0 .5vw;letter-spacing:.08em}.sportbox .sx:hover{color:var(--warn);border-color:var(--warn)}
+.sportbox .conf{display:flex;align-items:center;gap:.6vw;flex-wrap:wrap;border:1px solid var(--warn);padding:.3vh .6vw;color:var(--warn);font-size:clamp(10px,.72vw,13px)}
+.sportbox .conf .btn{font-size:.8em;padding:.1vh .6vw}
+.sportsempty{color:var(--dim);font-size:clamp(10px,.72vw,13px);padding:.4vh 0}
 .featx{margin:-.3vh 0 .8vh;padding:.6vh .8vw;border-left:2px solid var(--dim);background:rgba(2,12,26,.45)}
 .wk{display:flex;flex-direction:column;gap:.6vh;font-family:var(--mono);font-size:clamp(10px,.74vw,14px)}
 .wkrow{display:flex;gap:.7vw;align-items:center;flex-wrap:wrap}
@@ -451,7 +468,8 @@ body.wake-flash #orb{filter:drop-shadow(0 0 26px var(--c)) brightness(1.2)}
       <div class="vwrap"><video id="camv" autoplay muted playsinline></video><div class="rt"></div><div class="rec">● LIVE</div></div>
       <div class="cbtn"><button class="btn sel" id="lookbtn">Look</button><button class="btn" id="camx">Close</button></div>
       <div class="lab cst" id="camst">Ask in the bar below, then press Look</div></div>
-    <div class="orbwrap"><canvas id="orb" tabindex="0" aria-label="Voice orb – click to listen"></canvas></div>
+    <div class="orbwrap"><canvas id="orb" tabindex="0" aria-label="Voice orb – click to listen"></canvas>
+      <div class="convring" id="convring" role="status" aria-live="polite"><svg viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="46"/><circle class="arc" id="convarc" cx="50" cy="50" r="46" transform="rotate(-90 50 50)" stroke-dasharray="289.03" stroke-dashoffset="0"/></svg><div class="pill" id="convpill">Reply now</div></div></div>
     <div class="state" id="state">Connecting…</div>
     <div class="caption dimmed" id="caption" title="Open conversation"><b class="aname">ATLAS</b>Say something, or type below.</div>
     <div class="ctrl">
@@ -689,7 +707,7 @@ document.getElementById('mic2').addEventListener('click',()=>voiceToggle());
 cv.addEventListener('keydown',e=>{if(e.code==='Enter'){e.preventDefault();voiceToggle()}});
 window.addEventListener('keydown',e=>{const tg=e.target.tagName;
   if(e.code==='Space'&&tg!=='INPUT'&&tg!=='TEXTAREA'&&tg!=='BUTTON'){e.preventDefault();voiceToggle()}
-  if(e.key==='Escape'){if(orbMode==='listening')voiceCancel();else closeOv();}});
+  if(e.key==='Escape'){if(CONV.state==='arming')convEnd('Esc');else if(orbMode==='listening')voiceCancel();else closeOv();}});
 const N=96;
 function frame(now){
   const t=(now-t0)/1000;
@@ -910,7 +928,7 @@ async function api(path,opts){
   if(!isHttp)throw new Error('Open the HUD via the bridge: http://127.0.0.1:8765');
   const r=await fetch(path,opts);
   let j=null;try{j=await r.json()}catch(e){}
-  if(!r.ok||(j&&j.ok===false)){const er=new Error((j&&j.error)||('HTTP '+r.status));if(j&&j.fix)er.fix=j.fix;throw er}
+  if(!r.ok||(j&&j.ok===false)){const er=new Error((j&&j.error)||('HTTP '+r.status));if(j&&j.fix)er.fix=j.fix;if(j&&j.needs_confirm)er.needs=j.prompt;throw er}
   return j;
 }
 const post=(p,o)=>api(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o)});
@@ -955,7 +973,7 @@ function startLvl(an){stopLvl();const buf=new Uint8Array(an.fftSize);
     lvl=Math.min(1,Math.sqrt(sum/buf.length)*5)},50)}
 function stopLvl(){if(lvlTimer){clearInterval(lvlTimer);lvlTimer=null}lvl=0}
 function stopSpeaking(){if(player){try{player.pause()}catch(e){}player.src='';}stopLvl();if(orbMode==='speaking')setOrb('idle')}
-async function speak(text){
+async function speak(text,onEnd){
   if(!speakOn||!BR.online){setOrb('idle');return}
   let blob;
   try{
@@ -966,7 +984,7 @@ async function speak(text){
   const ctx=audioCtx();
   if(!player){player=new Audio();playerSrc=ctx.createMediaElementSource(player);anaOut=ctx.createAnalyser();anaOut.fftSize=512;playerSrc.connect(anaOut);anaOut.connect(ctx.destination)}
   const url=URL.createObjectURL(blob);player.src=url;
-  player.onended=()=>{stopLvl();URL.revokeObjectURL(url);setOrb('idle');log('Finished speaking')};
+  player.onended=()=>{stopLvl();URL.revokeObjectURL(url);setOrb('idle');log('Finished speaking');if(onEnd)setTimeout(onEnd,CONV_GUARD_MS)};   /* natural end only: a stop/interrupt never re-opens the mic */
   player.onerror=()=>{stopLvl();setOrb('idle')};
   try{await player.play();setOrb('speaking');startLvl(anaOut);log('Speaking reply')}
   catch(e){log('Audio blocked by browser · click the page once');setOrb('idle')}
@@ -974,21 +992,34 @@ async function speak(text){
 document.getElementById('spk').addEventListener('click',()=>{
   speakOn=!speakOn;try{localStorage.setItem('hermes_hud_speak',speakOn?'1':'0')}catch(e){}
   document.getElementById('spk').classList.toggle('sel',speakOn);if(!speakOn)stopSpeaking();
+  if(BR.online)post('/api/settings/mute',{value:!speakOn}).then(j=>{SETS=j.settings||SETS}).catch(()=>{});
   log('Spoken replies '+(speakOn?'on':'off'));
 });
 document.getElementById('spk').classList.toggle('sel',speakOn);
 
+/* ---- a setting changed by voice/chat ("turn off wake word"): apply it before the answer is spoken ---- */
+function applyLocal(r){
+  if(r.prefs)applyPrefs(r.prefs);
+  if(r.profile)applyProfile(r.profile);
+  if(r.assistant)applyAssistant(r.assistant);
+  const ch=r.changed||[];
+  if(ch.some(x=>x.indexOf('module.')===0))loadFeatures();
+  if(ch.length){ED=null;loadSettings();if(ovMode==='settings')renderSettings(true)}
+  if(r.ui&&r.ui.open==='ai'){SU.sel=r.ui.provider||'';openSetup({ai:true})}
+}
 /* ---- ask Hermes (text) ---- */
 async function askHermes(text,opt){
   opt=opt||{};
   if(!BR.online){setCaption('BRIDGE','Bridge offline — launch ATLAS (shortcut / app) on this computer.',true);return}
+  if(CONV.state!=='off')convEnd('new request');
   stopSpeaking();
   addMsg('user',text);setCaption('YOU',text);log('You: '+text.slice(0,60));
   setOrb('thinking');
   try{
     const r=await post('/api/chat',{text});
+    if(r.local)applyLocal(r);
     addMsg('assistant',r.reply);setCaption(an(),r.reply);log(an()+' replied · '+(r.ms/1000).toFixed(1)+'s');
-    if(opt.speak!==false&&speakOn)await speak(r.reply);else setOrb('idle');
+    if(opt.speak!==false&&speakOn)await speak(r.reply,opt.voice?convOpen:null);else setOrb('idle');
   }catch(e){
     addMsg('assistant',e.message,{error:true});setCaption('ERROR',e.message,true);log('Hermes error · '+e.message.slice(0,60));setOrb('idle');
     if(e.fix==='setup')openSetup();else if(e.fix==='model')openSetup({ai:true});
@@ -998,17 +1029,20 @@ async function askHermes(text,opt){
 /* ---- push-to-talk ---- */
 const REC={rec:null,stream:null,ctx:null,timer:null,chunks:[],speech:false,silentSince:0,t0:0,cancel:false};
 function voiceToggle(){
-  if(orbMode==='listening')return voiceStop();
+  if(CONV.state==='arming')return convEnd('button');
+  if(orbMode==='listening')return(REC.conv&&!REC.speech)?voiceCancel():voiceStop();   /* button during the follow-up window = end it */
   if(orbMode==='speaking'){stopSpeaking();return voiceStart()}
   if(orbMode==='idle')return voiceStart();
 }
-async function voiceStart(){
-  if(!BR.online){setCaption('BRIDGE','Bridge offline — launch ATLAS (shortcut / app) on this computer.',true);log('Mic pressed · bridge offline');return}
-  if(!navigator.mediaDevices||!window.MediaRecorder){setCaption('MIC','This browser cannot record audio.',true);return}
+async function voiceStart(o){
+  const conv=!!(o&&o.conv);
+  if(!BR.online){if(!conv){setCaption('BRIDGE','Bridge offline — launch ATLAS (shortcut / app) on this computer.',true);log('Mic pressed · bridge offline')}return false}
+  if(!navigator.mediaDevices||!window.MediaRecorder){if(!conv)setCaption('MIC','This browser cannot record audio.',true);return false}
   try{REC.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}
-  catch(e){setCaption('MIC','Microphone blocked — allow it in the browser address bar.',true);log('Microphone blocked');return}
+  catch(e){if(!conv)setCaption('MIC','Microphone blocked — allow it in the browser address bar.',true);log('Microphone blocked');return false}
+  if(conv&&CONV.state!=='arming'){REC.stream.getTracks().forEach(t=>t.stop());REC.stream=null;return false}   /* ended while the mic was being opened */
   const mime=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'].find(m=>MediaRecorder.isTypeSupported(m))||'';
-  REC.chunks=[];REC.speech=false;REC.cancel=false;REC.silentSince=0;REC.t0=Date.now();REC.wake=!!REC.nextWake;REC.nextWake=false;
+  REC.chunks=[];REC.speech=false;REC.cancel=false;REC.silentSince=0;REC.t0=Date.now();REC.wake=!!REC.nextWake;REC.nextWake=false;REC.conv=conv;REC.waitMs=conv?CONV.secs*1000:7000;
   REC.rec=new MediaRecorder(REC.stream,mime?{mimeType:mime}:undefined);
   REC.rec.ondataavailable=e=>{if(e.data&&e.data.size)REC.chunks.push(e.data)};
   REC.rec.onstop=onRecStop;
@@ -1018,13 +1052,15 @@ async function voiceStart(){
     ana.getByteTimeDomainData(buf);let sum=0;for(let i=0;i<buf.length;i++){const v=(buf[i]-128)/128;sum+=v*v}
     const rms=Math.sqrt(sum/buf.length);lvl=Math.min(1,rms*6);
     const now=Date.now();
-    if(rms>0.02){REC.speech=true;REC.silentSince=0}else if(REC.speech&&!REC.silentSince)REC.silentSince=now;
+    if(rms>0.02){if(!REC.speech&&REC.conv)convHeard();REC.speech=true;REC.silentSince=0}else if(REC.speech&&!REC.silentSince)REC.silentSince=now;
     if(REC.speech&&REC.silentSince&&now-REC.silentSince>1400)voiceStop();            // end of utterance
-    else if(!REC.speech&&now-REC.t0>7000)voiceStop();                                 // nothing said
+    else if(!REC.speech&&now-REC.t0>REC.waitMs)voiceStop();                           // nothing said (7 s, or the conversation window)
     else if(now-REC.t0>30000)voiceStop();                                             // hard cap
   },50);
   REC.rec.start(250);
-  setOrb('listening');setCaption('YOU','Listening…');cap.classList.add('dimmed');log('Listening (mic open)');
+  setOrb('listening');
+  if(conv){convListening();log('Conversation window open ('+CONV.secs+' s)')}else{setCaption('YOU','Listening…');cap.classList.add('dimmed');log('Listening (mic open)')}
+  return true;
 }
 function stripWake(t){
   const nm=an().toLowerCase().replace(/[^a-z0-9' ]+/g,' ').replace(/\s+/g,' ').trim(),k=nm?nm.split(' ').length:0;
@@ -1042,9 +1078,10 @@ function cleanupRec(){
 }
 async function onRecStop(){
   cleanupRec();
+  const conv=!!REC.conv;REC.conv=false;convClose();
   const blob=new Blob(REC.chunks,{type:(REC.rec&&REC.rec.mimeType)||'audio/webm'});
-  if(REC.cancel){setOrb('idle');setCaption('', 'Cancelled.');cap.classList.add('dimmed');return}
-  if(!REC.speech||blob.size<1500){setOrb('idle');setCaption(an(),"I didn't hear anything.");cap.classList.add('dimmed');log('No speech detected');return}
+  if(REC.cancel){setOrb('idle');if(conv){log('Conversation ended');return}setCaption('', 'Cancelled.');cap.classList.add('dimmed');return}
+  if(!REC.speech||blob.size<1500){setOrb('idle');if(conv){log('Conversation window closed · no speech');return}setCaption(an(),"I didn't hear anything.");cap.classList.add('dimmed');log('No speech detected');return}
   setOrb('transcribing');
   try{
     const r=await fetch('/api/listen',{method:'POST',headers:{'Content-Type':blob.type||'audio/webm'},body:blob});
@@ -1052,13 +1089,83 @@ async function onRecStop(){
     if(!r.ok||j.ok===false)throw new Error(j.error||('HTTP '+r.status));
     let t=(j.transcript||'').trim();
     log('Heard ('+j.device+', '+j.ms+' ms)');
-    if(!t){setOrb('idle');setCaption(an(),"I didn't catch that — try again.");cap.classList.add('dimmed');return}
+    if(!t){setOrb('idle');if(conv){log('Conversation window closed · nothing understood');return}setCaption(an(),"I didn't catch that — try again.");cap.classList.add('dimmed');return}
     if(REC.wake){                     /* started by the wake word: drop the phrase itself if it leaked into the recording */
       REC.wake=false;const rest=stripWake(t);
       if(!rest){log('Only the wake phrase was heard · listening again');setOrb('idle');ATLAS.listen();return}
       t=rest}
-    await askHermes(t,{speak:true});
-  }catch(e){setOrb('idle');setCaption('ERROR',e.message,true);log('Speech-to-text error · '+e.message.slice(0,60))}
+    if(conv&&convIsEnd(t)){setOrb('idle');log('Conversation ended · you said "'+t.slice(0,30)+'"');setCaption(an(),'Okay — just ask when you need me.');cap.classList.add('dimmed');return}
+    await askHermes(t,{speak:true,voice:true});     /* voice in -> voice out -> the follow-up window opens after the reply */
+  }catch(e){setOrb('idle');if(conv){log('Conversation error · '+e.message.slice(0,60));return}setCaption('ERROR',e.message,true);log('Speech-to-text error · '+e.message.slice(0,60))}
+}
+
+/* ---- conversation mode: after a spoken answer to a voice request, listen again for a few seconds (no button press) ---- */
+const CONV_GUARD_MS=350;                       /* wait this long after the last audio sample before the mic opens: ATLAS must not hear itself */
+const CONV={on:true,secs:6,state:'off',t0:0,timer:null,arm:null};   /* state: off | arming (tone) | listening (countdown) | heard (you started talking) */
+try{CONV.on=localStorage.getItem('atlas_conv_on')!=='0';const sv=parseFloat(localStorage.getItem('atlas_conv_secs'));if(sv>=3&&sv<=15)CONV.secs=Math.round(sv)}catch(e){}
+function convSave(){try{localStorage.setItem('atlas_conv_on',CONV.on?'1':'0');localStorage.setItem('atlas_conv_secs',String(CONV.secs))}catch(e){}}
+/* ---- settings registry (the bridge owns it: GET /api/settings; voice/chat and this screen change the same values) ---- */
+let SETS=[];
+const PANEL_IDS={clock:'t-clock',weather:'t-weather',scanner:'t-scan',sports:'t-football',system:'t-system',hermes:'t-hermes'};
+function applyPanels(hidden){hidden=hidden||[];Object.keys(PANEL_IDS).forEach(k=>{const el=document.getElementById(PANEL_IDS[k]);if(el)el.style.display=hidden.indexOf(k)>=0?'none':''})}
+function applyPrefs(p){
+  if(!p)return;
+  if(typeof p.conversation_on==='boolean'){CONV.on=p.conversation_on;if(!CONV.on&&CONV.state!=='off')convEnd('turned off')}
+  if(p.conversation_secs>=3&&p.conversation_secs<=15)CONV.secs=Math.round(p.conversation_secs);
+  convSave();
+  if(typeof p.mute==='boolean'){speakOn=!p.mute;try{localStorage.setItem('hermes_hud_speak',speakOn?'1':'0')}catch(e){}const sb=document.getElementById('spk');if(sb)sb.classList.toggle('sel',speakOn);if(!speakOn)stopSpeaking()}
+  applyPanels(p.panels_hidden);
+}
+async function loadSettings(){try{const j=await api('/api/settings');SETS=j.settings||[];applyPrefs(j.prefs);if(j.profile)applyProfile(j.profile);if(j.assistant)applyAssistant(j.assistant);if(ovMode==='settings'&&setTab==='general')renderSettings(true)}catch(e){}}
+/* a setting changed from the Settings screen: the bridge applies and saves it; a risky one asks first (409 + prompt) */
+async function setSetting(id,value){
+  try{
+    let j;
+    try{j=await post('/api/settings/'+encodeURIComponent(id),{value})}
+    catch(e){if(e.needs){if(!confirm(e.needs))return null;j=await post('/api/settings/'+encodeURIComponent(id),{value,confirmed:true})}else throw e}
+    SETS=j.settings||SETS;applyPrefs(j.prefs);if(j.ui&&j.ui.open==='ai'){SU.sel=j.ui.provider;openSetup({ai:true})}return j;
+  }catch(e){log('Setting failed · '+e.message);return null}
+}
+const CONV_END=['thats all','that is all','thats it','that is it','thatll be all','that will be all','stop','stop listening','thanks','thank you','thanks a lot','thanks so much','thank you so much','thank you very much','no thanks','no thank you','nevermind','never mind','cancel','im good','i am good','all done','were done','we are done','goodbye','bye'];
+function convIsEnd(t){
+  let w=String(t||'').toLowerCase().replace(/[\u2018\u2019]/g,"'").replace(/'/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+  const nm=an().toLowerCase().replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+  if(nm){if(w.endsWith(' '+nm))w=w.slice(0,-nm.length-1).trim();else if(w.startsWith(nm+' '))w=w.slice(nm.length+1).trim()}
+  w=w.replace(/^(ok|okay|alright|all right|yes|yeah|no|well|so|great|perfect|cool|hey)\s+/,'').replace(/\s+(please|then|now)$/,'').trim();
+  return CONV_END.includes(w);
+}
+function convTone(){   /* soft two-note chime (~0.2 s) so you know the mic is open again */
+  try{const c=audioCtx(),t=c.currentTime,g=c.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.05,t+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t+0.2);g.connect(c.destination);
+    [[660,0],[880,0.09]].forEach(([f,d])=>{const o=c.createOscillator();o.type='sine';o.frequency.value=f;o.connect(g);o.start(t+d);o.stop(t+d+0.11)})}catch(e){}
+}
+function convRing(show,txt){
+  if(show)document.body.dataset.conv=show;else delete document.body.dataset.conv;
+  if(txt!=null)document.getElementById('convpill').textContent=txt;
+}
+function convPaint(){
+  if(CONV.state!=='listening')return;
+  const left=Math.max(0,CONV.secs*1000-(Date.now()-CONV.t0)),f=left/(CONV.secs*1000);
+  document.getElementById('convarc').setAttribute('stroke-dashoffset',String(289.03*(1-f)));
+  document.getElementById('convpill').textContent='Reply now · '+Math.ceil(left/1000)+' s';
+}
+function convOpen(){
+  if(!CONV.on||CONV.state!=='off'||orbMode!=='idle'||!BR.online||SU.open)return;
+  CONV.state='arming';convRing('listening','Listening…');document.getElementById('convarc').setAttribute('stroke-dashoffset','0');
+  ATLAS.dispatch({type:'conversation',state:'arming'});convTone();
+  CONV.arm=setTimeout(async()=>{CONV.arm=null;if(CONV.state!=='arming')return;const ok=await voiceStart({conv:true});if(!ok)convClose()},400);   /* after the chime, so it is not recorded */
+}
+function convListening(){CONV.state='listening';CONV.t0=Date.now();convRing('listening');convPaint();clearInterval(CONV.timer);CONV.timer=setInterval(convPaint,100);ATLAS.dispatch({type:'conversation',state:'listening'})}
+function convHeard(){if(CONV.state!=='listening')return;CONV.state='heard';clearInterval(CONV.timer);CONV.timer=null;convRing('heard','Hearing you…');document.getElementById('convarc').setAttribute('stroke-dashoffset','0')}
+function convClose(){
+  if(CONV.arm){clearTimeout(CONV.arm);CONV.arm=null}
+  clearInterval(CONV.timer);CONV.timer=null;
+  if(CONV.state!=='off'){CONV.state='off';convRing(null);ATLAS.dispatch({type:'conversation',state:'off'})}
+}
+function convEnd(why){   /* Esc, the mic button, a typed request... : close the window quietly */
+  if(CONV.state==='off')return;
+  log('Conversation ended'+(why?' · '+why:''));
+  if(REC.conv&&REC.rec&&REC.rec.state!=='inactive'){REC.cancel=true;REC.rec.stop()}
+  convClose();
 }
 
 /* ---- camera + look ---- */
@@ -1130,7 +1237,8 @@ function applyHealth(h){
     SYS=null;setSystemExample();
   }else{
     bdot.className='dot'+(BR.hermes&&!BR.fix?'':' warn');btxt.innerHTML=BR.fix?'Bridge online · <span class="fixchip">Connect Hermes</span>':BR.hermes?'Bridge online · Hermes ready':'Bridge online · Hermes unreachable';
-    if(BR.fix&&!SU.shown&&!SU.dismissed){SU.shown=true;setTimeout(()=>{if(!SU.open)openSetup()},900)}
+    if(h.setup&&h.setup.first_run&&!SU.shown&&!SU.dismissed){SU.shown=true;setTimeout(()=>{if(!SU.open)openSetup({ai:true,first:true})},700)}   /* fresh install: straight into AI sign-in, then 'about you' */
+    else if(BR.fix&&!SU.shown&&!SU.dismissed){SU.shown=true;setTimeout(()=>{if(!SU.open)openSetup()},900)}
     const st=h.stt||{};
     if(st.error){pttTag.textContent='Speech model error';pttTag.className='tag off'}
     else if(!st.loaded){pttTag.textContent='Loading speech model…';pttTag.className='tag'}
@@ -1186,7 +1294,8 @@ const ATLAS={
   on(type,fn){(ATLAS_EVT[type]=ATLAS_EVT[type]||[]).push(fn)},
   dispatch(msg){(ATLAS_EVT[msg.type]||[]).forEach(f=>{try{f(msg)}catch(e){console.error(e)}})},
   speak:(t)=>speak(t),ask:(t,o)=>askHermes(t,o),log:(m)=>log(m),post,api,setOrb,
-  orb:()=>orbMode,
+  orb:()=>CONV.state==='arming'?'listening':orbMode,   /* the wake-word listener stays out while the follow-up chime plays */
+  conversation:()=>({on:CONV.on,secs:CONV.secs,state:CONV.state}),
   listen(o){if(orbMode==='speaking')stopSpeaking();if(orbMode==='idle'||orbMode==='speaking'){REC.nextWake=!!(o&&o.wake);return voiceStart()}},
   openSettings(tab){if(tab)setTab=tab;if(ovMode==='settings')renderSettings(true);else openMod('settings')},
   settingsChanged(id){if(ovMode==='settings'&&setTab==='features')paintFeatx(id)},
@@ -1268,38 +1377,59 @@ const SUGG={
   'College football':{leagues:['SEC','Big Ten','Big 12','ACC'],teams:['Alabama','Georgia','Ohio State','Michigan','Texas','Oklahoma','Notre Dame','LSU','Clemson','USC','Oregon','Penn State','Texas A&M','TCU']},
   'F1':{teams:['Red Bull','Ferrari','Mercedes','McLaren','Aston Martin','Alpine','Williams','Haas','Sauber','Racing Bulls']}};
 let DLN=0;
-function tagInput(arr,sugg,ph){
+function tagInput(arr,sugg,ph,onRemove){
   const wrap=document.createElement('div');wrap.className='tags';
   const dl=document.createElement('datalist');dl.id='dl'+(++DLN);(sugg||[]).forEach(v=>{const o=document.createElement('option');o.value=v;dl.appendChild(o)});
   const inp=document.createElement('input');inp.setAttribute('list',dl.id);inp.placeholder=ph;inp.maxLength=40;
-  function draw(){wrap.querySelectorAll('.tg').forEach(e=>e.remove());arr.forEach((t,i)=>{const c=document.createElement('span');c.className='tg';c.textContent=t+' ✕';c.title='Remove';c.onclick=()=>{arr.splice(i,1);draw()};wrap.insertBefore(c,inp)})}
+  function draw(){wrap.querySelectorAll('.tg').forEach(e=>e.remove());arr.forEach((t,i)=>{const c=document.createElement('span');c.className='tg';
+    const l=document.createElement('span');l.className='tl';l.textContent=t;l.title='Click to edit';l.onclick=()=>{arr.splice(i,1);draw();inp.value=t;inp.focus()};
+    const x=document.createElement('span');x.className='tx';x.textContent='✕';x.title='Remove '+t;x.setAttribute('role','button');x.setAttribute('aria-label','Remove '+t);x.onclick=()=>{arr.splice(i,1);draw();if(onRemove)onRemove(t)};
+    c.append(l,x);wrap.insertBefore(c,inp)})}
   function add(v){v=(v||'').trim();if(v&&arr.length<10&&!arr.some(x=>x.toLowerCase()===v.toLowerCase()))arr.push(v);inp.value='';draw()}
-  inp.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===','){e.preventDefault();add(inp.value)}else if(e.key==='Backspace'&&!inp.value&&arr.length){arr.pop();draw()}});
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===','){e.preventDefault();add(inp.value)}else if(e.key==='Backspace'&&!inp.value&&arr.length){const g=arr.pop();draw();if(onRemove)onRemove(g)}});
   inp.addEventListener('input',e=>{if(e.inputType==='insertReplacementText'||e.inputType===undefined)add(inp.value)});
   inp.addEventListener('blur',()=>{if(inp.value.trim())add(inp.value)});
   wrap.append(inp,dl);draw();wrap.add=add;return wrap;
 }
 function edSport(name){return ED.sports.find(x=>x.sport.toLowerCase()===name.toLowerCase())}
+let SPORT_CONF=null;      /* the sport whose "remove?" question is open */
+async function persistSports(note){
+  const m=document.getElementById('pf-msg');
+  try{const j=await post('/api/profile',{sports:ED.sports});applyProfile(j.profile);ED={sports:JSON.parse(JSON.stringify(j.profile.sports||[]))};loadSettings();
+    if(m){m.className='msg';m.textContent=(note||'Saved')+' · Sports panel updated'}}
+  catch(e){if(m){m.className='msg bad';m.textContent=e.message}}
+  drawSportsEditor();
+}
+function removeSport(name){const e=edSport(name);if(e)ED.sports.splice(ED.sports.indexOf(e),1);SPORT_CONF=null;persistSports('Removed '+name)}
 function drawSportsEditor(){
   const el=document.getElementById('pf-sports');if(!el)return;el.innerHTML='';
   const chips=document.createElement('div');chips.className='chips';
   const names=SPORTS.concat(ED.sports.map(x=>x.sport).filter(n=>!SPORTS.some(c=>c.toLowerCase()===n.toLowerCase())));
-  names.forEach(n=>{const b=document.createElement('button');b.className='chip'+(edSport(n)?' sel':'');b.textContent=n;
-    b.onclick=()=>{const e=edSport(n);if(e)ED.sports.splice(ED.sports.indexOf(e),1);else if(ED.sports.length<8)ED.sports.push({sport:n,leagues:[],teams:[]});drawSportsEditor()};chips.appendChild(b)});
+  names.forEach(n=>{const sel=!!edSport(n);const b=document.createElement('button');b.className='chip'+(sel?' sel':'');b.dataset.sport=n;
+    b.appendChild(document.createTextNode(n));
+    if(sel){const x=document.createElement('span');x.className='cx';x.textContent='✕';x.title='Remove '+n;b.appendChild(x);b.setAttribute('aria-label','Remove '+n)}
+    b.onclick=()=>{if(sel){SPORT_CONF=n;drawSportsEditor()}else if(ED.sports.length<8){ED.sports.push({sport:n,leagues:[],teams:[]});drawSportsEditor()}};chips.appendChild(b)});
   const oi=document.createElement('input');oi.className='other';oi.placeholder='Other sport…';oi.maxLength=30;
   oi.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const v=oi.value.trim();if(v&&!edSport(v)&&ED.sports.length<8){ED.sports.push({sport:v,leagues:[],teams:[]});drawSportsEditor()}}});
   chips.appendChild(oi);el.appendChild(chips);
+  if(!ED.sports.length){const em=document.createElement('div');em.className='sportsempty';em.id='sportsempty';em.textContent='No sports followed yet. Pick one above - the Sports panel shows “No sports yet” until you do.';el.appendChild(em)}
   ED.sports.forEach(sp=>{
-    const sg=SUGG[sp.sport]||{};const box=document.createElement('div');box.className='sportbox';
-    const h=document.createElement('div');h.className='sh';h.textContent=sp.sport;box.appendChild(h);
-    if(sg.leagues){const l=document.createElement('div');l.className='srow';l.innerHTML='<span class="lab">'+(sp.sport==='Soccer'?'Leagues':'Conferences')+'</span>';l.appendChild(tagInput(sp.leagues,sg.leagues,'Add… (Enter)'));box.appendChild(l)}
-    const t=document.createElement('div');t.className='srow';t.innerHTML='<span class="lab">Teams</span>';t.appendChild(tagInput(sp.teams,sg.teams||[],'Type a team, Enter to add'));box.appendChild(t);
+    const sg=SUGG[sp.sport]||{};const box=document.createElement('div');box.className='sportbox';box.dataset.sport=sp.sport;
+    const h=document.createElement('div');h.className='sh';const hn=document.createElement('span');hn.textContent=sp.sport;h.appendChild(hn);
+    const rx=document.createElement('button');rx.className='sx';rx.textContent='✕ Remove sport';rx.title='Remove '+sp.sport+' and its leagues and teams';rx.setAttribute('aria-label','Remove sport '+sp.sport);rx.onclick=()=>{SPORT_CONF=sp.sport;drawSportsEditor()};h.appendChild(rx);box.appendChild(h);
+    if(SPORT_CONF===sp.sport){const n=(sp.teams||[]).length+(sp.leagues||[]).length;
+      const cf=document.createElement('div');cf.className='conf';cf.setAttribute('role','alertdialog');cf.innerHTML='<span>Remove '+esc(sp.sport)+(n?' and its '+n+' team'+(n===1?'':'s')+'/league'+(n===1?'':'s'):'')+'?</span>';
+      const yes=document.createElement('button');yes.className='btn sel';yes.textContent='Remove';yes.dataset.confirm='yes';yes.onclick=()=>removeSport(sp.sport);
+      const no=document.createElement('button');no.className='btn';no.textContent='Keep';no.dataset.confirm='no';no.onclick=()=>{SPORT_CONF=null;drawSportsEditor()};
+      cf.append(yes,no);box.appendChild(cf)}
+    if(sg.leagues){const l=document.createElement('div');l.className='srow';l.innerHTML='<span class="lab">'+(sp.sport==='Soccer'?'Leagues':'Conferences')+'</span>';l.appendChild(tagInput(sp.leagues,sg.leagues,'Add… (Enter)',()=>persistSports('Removed')));box.appendChild(l)}
+    const t=document.createElement('div');t.className='srow';t.innerHTML='<span class="lab">Teams</span>';t.appendChild(tagInput(sp.teams,sg.teams||[],'Type a team, Enter to add',()=>persistSports('Removed')));box.appendChild(t);
     el.appendChild(box)});
 }
 function renderProfileTab(){
   if(!ED)ED={sports:JSON.parse(JSON.stringify(PROF.sports||[]))};
   const body=document.getElementById('settab');
-  body.innerHTML='<div class="prof"><label for="pf-aname">Assistant</label><input id="pf-aname" maxlength="20" placeholder="ATLAS" value="'+esc(ANAME)+'" title="What you call your assistant (1-20 characters). Wake word: Hey ‹name›"><label for="pf-name">Your name</label><input id="pf-name" maxlength="40" placeholder="What should '+esc(ANAME)+' call you?" value="'+esc(PROF.name||'')+'"><label for="pf-city">City</label><input id="pf-city" maxlength="80" placeholder="e.g. Austin, Texas (for weather)" value="'+esc(PROF.label||PROF.city||'')+'"><label>Sports</label><div id="pf-sports"></div><div class="prow"><button class="btn sel" id="pf-save">Save profile</button><span class="msg" id="pf-msg"></span></div><div class="cands" id="pf-cands"></div></div>';
+  body.innerHTML='<div class="prof"><label for="pf-aname">Assistant</label><input id="pf-aname" data-setting="assistant.name" maxlength="20" placeholder="ATLAS" value="'+esc(ANAME)+'" title="What you call your assistant (1-20 characters). Wake word: Hey ‹name›"><label for="pf-name">Your name</label><input id="pf-name" data-setting="user.name" maxlength="40" placeholder="What should '+esc(ANAME)+' call you?" value="'+esc(PROF.name||'')+'"><label for="pf-city">City</label><input id="pf-city" data-setting="user.city" maxlength="80" placeholder="e.g. Austin, Texas (for weather)" value="'+esc(PROF.label||PROF.city||'')+'"><label>Sports</label><div id="pf-sports" data-setting="user.sports"></div><div class="prow"><button class="btn sel" id="pf-save">Save profile</button><span class="msg" id="pf-msg"></span></div><div class="cands" id="pf-cands"></div></div>';
   drawSportsEditor();
   const pfSave=async(extra)=>{const m=document.getElementById('pf-msg');m.className='msg';m.textContent='Saving…';
     document.querySelectorAll('#pf-sports input').forEach(i=>i.dispatchEvent(new Event('blur')));
@@ -1318,10 +1448,14 @@ function paintFeatx(id){
 function renderFeaturesTab(){
   const rows=FEATS.slice().sort((a,b)=>(b.installed-a.installed)||(b.enabled-a.enabled)).map(f=>{const [lab,cls]=FSTAT[f.status]||[f.status,''];
     const dis=!f.installed;
-    return `<div class="feat"><div class="ft"><b>${esc(f.title)}</b><span>${esc(f.description).replace(/&lt;name&gt;/g,esc(an()))}${f.error?' · '+esc(f.error):''}${f.missing&&f.missing.length&&f.enabled?' · missing: '+esc(f.missing.join(', ')):''}</span></div>
+    return `<div class="feat" data-setting="module.${f.id}"><div class="ft"><b>${esc(f.title)}</b><span>${esc(f.description).replace(/&lt;name&gt;/g,esc(an()))}${f.error?' · '+esc(f.error):''}${f.missing&&f.missing.length&&f.enabled?' · missing: '+esc(f.missing.join(', ')):''}</span></div>
       <span class="st ${cls}">${lab}</span>${f.status==='needs_install'?`<button class="btn" data-inst="${f.id}">Install</button>`:''}
       <button class="sw ${f.enabled?'on':''}" data-feat="${f.id}" ${dis?'disabled':''} aria-label="Toggle ${esc(f.title)}" title="${dis?'Not installed in this version':'Toggle'}"></button></div>${f.enabled&&f.status==='running'&&f.ui?`<div class="featx" data-featx="${f.id}"></div>`:''}`}).join('');
-  document.getElementById('settab').innerHTML='<div class="featlist" id="featlist">'+(rows||'<div class="ph">No features</div>')+'</div>';
+  const convRows='<div class="feat" id="convcard" data-setting="conversation.on"><div class="ft"><b>Conversation mode</b><span>After '+esc(an())+' speaks an answer to something you said, it listens again for a few seconds so you can reply without pressing anything. Say “that’s all”, “stop” or “thanks” (or press Esc) to end it. It never listens while it is talking.</span></div><span class="st '+(CONV.on?'run':'')+'">'+(CONV.on?'On':'Off')+'</span><button class="sw '+(CONV.on?'on':'')+'" id="conv-sw" aria-label="Toggle conversation mode"></button></div>'+
+    '<div class="feat" id="convsecs" data-setting="conversation.secs"><div class="ft"><b>Listening window</b><span>How long it waits for you to start talking before it stops quietly (3–15 seconds).</span></div><input class="convrng" id="conv-range" type="range" min="3" max="15" step="1" value="'+CONV.secs+'" aria-label="Conversation listening window in seconds"><span class="st" id="conv-val">'+CONV.secs+' s</span></div>';
+  document.getElementById('settab').innerHTML=convRows+'<div class="featlist" id="featlist">'+(rows||'<div class="ph">No features</div>')+'</div>';
+  document.getElementById('conv-sw').onclick=()=>{CONV.on=!CONV.on;convSave();if(!CONV.on)convEnd('turned off');log('Conversation mode '+(CONV.on?'on':'off'));setSetting('conversation.on',CONV.on);renderSettings(true)};
+  document.getElementById('conv-range').oninput=e=>{CONV.secs=Math.max(3,Math.min(15,+e.target.value||6));document.getElementById('conv-val').textContent=CONV.secs+' s';convSave();clearTimeout(window.__convT);window.__convT=setTimeout(()=>setSetting('conversation.secs',CONV.secs),250)};
   const ovb2=document.getElementById('settab');
   FEATS.forEach(f=>paintFeatx(f.id));
   ovb2.querySelectorAll('[data-feat]').forEach(b=>b.onclick=async()=>{
@@ -1331,15 +1465,40 @@ function renderFeaturesTab(){
   ovb2.querySelectorAll('[data-inst]').forEach(b=>b.onclick=async()=>{b.textContent='Installing…';b.disabled=true;
     try{const j=await post('/api/features/'+b.dataset.inst,{action:'install'});FEATS=j.features}catch(e){log('Install failed · '+e.message)}renderSettings();loadFeatureUi()});
 }
+
+/* ---- General tab: drawn from the settings registry (sound, voice, panels, start at sign-in, updates, reset/uninstall) ---- */
+function genRow(s){
+  let ctl='';
+  if(s.kind==='bool')ctl='<span class="st '+(s.value?'run':'')+'">'+(s.id.indexOf('panel.')===0?(s.value?'Shown':'Hidden'):(s.value?'On':'Off'))+'</span><button class="sw '+(s.value?'on':'')+'" data-gset="'+esc(s.id)+'" aria-label="Toggle '+esc(s.title)+'"></button>';
+  else if(s.kind==='enum')ctl='<select class="gsel" data-gsel="'+esc(s.id)+'" aria-label="'+esc(s.title)+'">'+(s.choices||[]).map(c=>'<option'+(c===s.value?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select>';
+  else if(s.kind==='action')ctl='<button class="btn'+(s.confirm?'':' sel')+'" data-gact="'+esc(s.id)+'">'+esc(s.id==='updates.check'?'Check now':s.id==='updates.install'?'Install':s.id==='reset'?'Reset…':'How…')+'</button>';
+  return '<div class="feat" data-setting="'+esc(s.id)+'"><div class="ft"><b>'+esc(s.title)+'</b><span>'+esc(s.desc||'')+(s.confirm?' · asks before it changes':'')+'</span></div>'+ctl+'</div>';
+}
+function renderGeneralTab(){
+  const body=document.getElementById('settab');
+  const rows=SETS.filter(s=>s.ui==='general');
+  if(!rows.length){body.innerHTML='<div class="ph">Loading…</div>';loadSettings();return}
+  let h='',grp='';
+  rows.forEach(s=>{if(s.group!==grp){grp=s.group;h+='<div class="setgrp">'+esc(grp)+'</div>'}h+=genRow(s)});
+  const ex=SETS.filter(s=>s.examples&&s.examples.length).map(s=>'<li><b>'+esc(s.title)+'</b>: “'+esc(s.examples[0])+'”</li>').join('');
+  body.innerHTML=h+'<div class="prow"><span class="msg" id="gmsg"></span></div><details class="sayhelp"><summary>What can I say or type?</summary><p>Everything on these screens can also be changed by voice or chat. Risky changes (microphone on, switching the AI, add-ons, reset) always ask you to say yes first.</p><ul>'+ex+'</ul></details>';
+  const msg=t=>{const m=document.getElementById('gmsg');if(m)m.textContent=t||''};
+  body.querySelectorAll('[data-gset]').forEach(b=>b.onclick=async()=>{const id=b.dataset.gset;const j=await setSetting(id,!b.classList.contains('on'));if(j){msg(j.message||'');renderSettings(true)}});
+  body.querySelectorAll('[data-gsel]').forEach(sel=>sel.onchange=async()=>{const j=await setSetting(sel.dataset.gsel,sel.value);if(j){msg(j.message||'');renderSettings(true)}});
+  body.querySelectorAll('[data-gact]').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.gact,s=SETS.find(x=>x.id===id);
+    if(s&&s.confirm&&!confirm('Are you sure? '+s.desc))return;
+    try{const j=await post('/api/settings/'+encodeURIComponent(id)+'/run',{confirmed:true});msg(j.message||'Done');if(j.changed&&j.changed.length){ED=null;await loadSettings();await loadFeatures();pollHealth()}if(id==='updates.install')openMod('update')}catch(e){msg(e.message)}});
+}
 function renderSettings(fresh){
   if(ovMode!=='settings')return;
   if(fresh){ED=null}
   if(!fresh&&ovb.contains(document.activeElement)&&document.activeElement.tagName==='INPUT')return;   /* don't wipe what the user is typing */
   if(!fresh&&setTab==='profile'&&document.getElementById('settab'))return;                           /* profile tab only redraws on open/save */
-  ovb.innerHTML='<div class="tabs"><button class="tab'+(setTab==='profile'?' sel':'')+'" data-tab="profile">Profile</button><button class="tab'+(setTab==='features'?' sel':'')+'" data-tab="features">Features</button><button class="tab'+(setTab==='ai'?' sel':'')+'" data-tab="ai">AI connection</button></div><div id="settab"></div><div class="foot"><span class="lab">Saved on this computer</span><span class="lab" id="setupd" style="cursor:pointer;text-decoration:underline">ATLAS v'+esc((BR.health&&BR.health.version)||'?')+' · Updates</span></div>';
+  ovb.innerHTML='<div class="tabs"><button class="tab'+(setTab==='profile'?' sel':'')+'" data-tab="profile">Profile</button><button class="tab'+(setTab==='features'?' sel':'')+'" data-tab="features">Features</button><button class="tab'+(setTab==='general'?' sel':'')+'" data-tab="general">General</button><button class="tab'+(setTab==='ai'?' sel':'')+'" data-tab="ai">AI connection</button></div><div id="settab"></div><div class="foot"><span class="lab">Saved on this computer</span><span class="lab" id="setupd" style="cursor:pointer;text-decoration:underline">ATLAS v'+esc((BR.health&&BR.health.version)||'?')+' · Updates</span></div>';
   ovb.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{setTab=b.dataset.tab;renderSettings(true)});
   const su=document.getElementById('setupd');if(su)su.onclick=()=>openMod('update');
-  if(setTab==='profile')renderProfileTab();else if(setTab==='ai')renderAiTab();else renderFeaturesTab();
+  if(setTab==='profile')renderProfileTab();else if(setTab==='ai')renderAiTab();else if(setTab==='general')renderGeneralTab();else renderFeaturesTab();
 }
 async function loadFeatures(){
   try{const j=await api('/api/features');FEATS=j.features;renderSettings();loadFeatureUi()}catch(e){}
@@ -1350,7 +1509,7 @@ async function loadFeatures(){
    Setup wizard: Connect Hermes  ->  Sign in to your AI  ->  test message
    (all the work happens in the local bridge; secrets never come back to this page)
    ===================================================================== */
-const SU={open:false,st:null,job:null,sel:'',showAI:false,test:null,err:'',dismissed:false,autoDone:false,timer:null,shown:false,testing:false};
+const SU={first:false,about:false,open:false,st:null,job:null,sel:'',showAI:false,test:null,err:'',dismissed:false,autoDone:false,timer:null,shown:false,testing:false};
 const PROV_INFO={
   chatgpt:{n:'ChatGPT',s:'Sign in with your ChatGPT plan'},
   claude:{n:'Claude',s:'Anthropic API key'},
@@ -1359,7 +1518,7 @@ const PROV_INFO={
   ollama:{n:'Local model',s:'Runs on this computer (Ollama)'}};
 async function suStatus(fresh){try{SU.st=await api('/api/setup/status'+(fresh?'?fresh=1':''))}catch(e){}}
 function openSetup(opt){
-  opt=opt||{};SU.open=true;SU.dismissed=false;SU.test=null;SU.err='';SU.showAI=!!opt.ai;SU.autoDone=false;
+  opt=opt||{};SU.open=true;SU.dismissed=false;SU.test=null;SU.err='';SU.showAI=!!opt.ai;SU.autoDone=false;SU.first=!!opt.first;SU.about=false;
   if(SU.job&&SU.job.status!=='running')SU.job=null;
   document.getElementById('setup').classList.add('open');renderSetup();
   suStatus(true).then(()=>{renderSetup();suAutoRun()});
@@ -1389,6 +1548,7 @@ function suPoll(){
 }
 function suView(){
   const st=SU.st,jb=SU.job;
+  if(SU.about)return 'about';
   if(jb&&jb.status==='running')return 'job';
   if(jb&&jb.status==='error')return 'error';
   if(jb&&jb.status==='done'&&jb.kind==='provider')return 'ready';
@@ -1399,8 +1559,8 @@ function suView(){
   return 'ready';
 }
 function suCrumbs(v){
-  const i=(v==='install'||v==='fix'||(v==='job'&&SU.job&&(SU.job.kind==='fix'||SU.job.kind==='install')))?0:(v==='ai'||(v==='job'&&SU.job&&SU.job.kind==='provider'))?1:2;
-  const L=['1 · Hermes','2 · Your AI','3 · Ready'];
+  const i=(v==='install'||v==='fix'||(v==='job'&&SU.job&&(SU.job.kind==='fix'||SU.job.kind==='install')))?0:(v==='ai'||(v==='job'&&SU.job&&SU.job.kind==='provider'))?1:(v==='about'&&SU.first)?2:(SU.first?1.5:2);
+  const L=SU.first?['1 · Hermes','2 · Your AI','3 · About you']:['1 · Hermes','2 · Your AI','3 · Ready'];
   return '<div class="crumbs">'+L.map((t,k)=>'<span class="'+(k<i?'done':k===i?'on':'')+'">'+(k<i?'✓ ':'')+t+'</span>').join('')+'</div>';
 }
 function suChecks(jb){
@@ -1450,7 +1610,7 @@ function renderSetup(){
   }
   else if(v==='ai'){
     h+='<p>Which AI should '+A+' use?</p><div class="tiles">'+Object.keys(PROV_INFO).map(k=>'<button class="tile'+(SU.sel===k?' sel':'')+'" data-prov="'+k+'">'+esc(PROV_INFO[k].n)+'<small>'+esc(PROV_INFO[k].s)+'</small></button>').join('')+'</div>'+suProviderForm();
-    if(st.state==='ready')h+='<div class="row"><button class="btn" data-su="back">Back</button></div>';
+    if(st.state==='ready')h+='<div class="row"><button class="btn'+(SU.first?' sel':'')+'" data-su="back">'+(SU.first?'Keep '+esc(st.provider||'the AI I already use'):'Back')+'</button></div>';
   }
   else if(v==='ready'){
     const who=(jb&&jb.result&&jb.result.connected)||st.provider||'your AI',mdl=(jb&&jb.result&&jb.result.model)||st.model||'';
@@ -1458,9 +1618,17 @@ function renderSetup(){
     if(jb&&jb.result&&jb.result.warning)h+='<div class="sub">'+esc(jb.result.warning)+'</div>';
     if(SU.test)h+=SU.test.ok?'<div class="okmsg">Test reply: “'+esc(SU.test.reply||'(empty)')+'”</div>':'<div class="err">'+esc(SU.test.error||'No answer')+'</div>';
     else if(jb&&jb.result&&jb.result.test&&jb.result.test.ok)h+='<div class="okmsg">Test message worked: “'+esc(jb.result.test.reply||'(empty)')+'”</div>';
-    h+='<div class="row"><button class="btn sel" data-su="done">Start talking to '+A+'</button><button class="btn" data-su="test"'+(SU.testing?' disabled':'')+'>'+(SU.testing?'Testing…':'Test my AI')+'</button><button class="btn" data-su="change">Change AI</button></div>';
+    h+='<div class="row"><button class="btn sel" data-su="done">'+(SU.first?'Next: a bit about you':'Start talking to '+A)+'</button><button class="btn" data-su="test"'+(SU.testing?' disabled':'')+'>'+(SU.testing?'Testing…':'Test my AI')+'</button><button class="btn" data-su="change">Change AI</button></div>';
+  }
+  else if(v==='about'){
+    h='<h4>▸ ABOUT YOU</h4>'+suCrumbs(v)+(SU.err?'<div class="err">'+esc(SU.err)+'</div>':'')+'<p>Last step - all optional. '+A+' uses this for greetings, weather and sports. You can change everything later in Settings.</p>'+
+      '<div class="prof"><label for="abassist">Assistant</label><input id="abassist" maxlength="20" placeholder="ATLAS" value="'+esc(ANAME)+'"><label for="abname">Your name</label><input id="abname" maxlength="40" placeholder="What should I call you?" value="'+esc((PROF&&PROF.name)||'')+'">'+
+      '<label for="abcity">City</label><input id="abcity" maxlength="80" placeholder="e.g. Austin, Texas (for weather)" value="'+esc((PROF&&PROF.city)||'')+'"></div>'+
+      '<details><summary>Favorite sports and teams</summary><div id="pf-sports"></div></details>'+
+      '<div class="row"><button class="btn sel" data-su="aboutsave">Finish</button><button class="btn" data-su="aboutskip">Skip for now</button></div>';
   }
   box.innerHTML=h;
+  if(v==='about'){if(!ED)ED={sports:JSON.parse(JSON.stringify((PROF&&PROF.sports)||[]))};drawSportsEditor()}
   box.querySelectorAll('[data-recmodel]').forEach(b=>b.onclick=()=>{const i=document.getElementById('supull');if(i)i.value=b.dataset.recmodel});
   const wsel=document.getElementById('sumodelsel');if(wsel)wsel.onchange=()=>{const w=document.getElementById('suweak');if(w){const o=(SU.st&&SU.st.ollama)||{};w.style.display=(o.weak||[]).includes(wsel.value.replace(/\s+\(weak with tools\)$/,''))?'block':'none'}};
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>{SU.sel=b.dataset.prov;SU.err='';if(SU.sel==='ollama')suStatus(true).then(renderSetup);renderSetup()});
@@ -1477,7 +1645,15 @@ async function suAct(a){
   if(a==='refresh'){await suStatus(true);return renderSetup()}
   if(a==='back'){SU.showAI=false;SU.sel='';return renderSetup()}
   if(a==='change'){SU.showAI=true;SU.job=null;SU.test=null;SU.sel='';return renderSetup()}
-  if(a==='done'){closeSetup();setCaption(an(),'Connected. Say something!');return}
+  if(a==='done'){if(SU.first){SU.about=true;SU.err='';ED=null;return renderSetup()}closeSetup();setCaption(an(),'Connected. Say something!');return}
+  if(a==='aboutskip'||a==='aboutsave'){
+    if(a==='aboutsave'){
+      document.querySelectorAll('#pf-sports input').forEach(i=>i.dispatchEvent(new Event('blur')));
+      const body={name:val('abname'),sports:ED?ED.sports:[]};const an2=val('abassist');if(an2)body.assistant={name:an2};const ct=val('abcity');if(ct)body.city=ct;
+      try{const j=await post('/api/profile',body);if(j.assistant)applyAssistant(j.assistant);applyProfile(j.profile)}catch(e){SU.err=e.message;return renderSetup()}
+    }
+    try{await post('/api/setup/first-run-done',{})}catch(e){}
+    ED=null;SU.first=false;SU.about=false;closeSetup();setCaption(an(),a==='aboutsave'?'All set. Say something!':'Connected. Say something!');return}
   if(a==='test'){SU.testing=true;SU.test=null;renderSetup();
     try{const j=await post('/api/setup/test',{});SU.test=j.result}catch(e){SU.test={ok:false,error:e.message}}
     SU.testing=false;await suStatus(true);return renderSetup()}
@@ -1492,7 +1668,7 @@ async function suAct(a){
 }
 function renderAiTab(){
   const st=(BR.health&&BR.health.setup)||{},ok=st.state==='ready';
-  document.getElementById('settab').innerHTML='<div class="prof"><label>Hermes</label><div class="prow"><span class="msg">'+(ok?'Connected to '+esc(st.provider||'your AI')+(st.model?' · '+esc(st.model):''):st.state==='needs_ai'?'Hermes is running, but no AI is signed in yet.':st.state==='needs_install'?'Hermes is not installed yet.':'Hermes is not connected yet.')+'</span></div>'+
+  document.getElementById('settab').innerHTML='<div class="prof" data-setting="ai.provider"><label>Hermes</label><div class="prow"><span class="msg">'+(ok?'Connected to '+esc(st.provider||'your AI')+(st.model?' · '+esc(st.model):''):st.state==='needs_ai'?'Hermes is running, but no AI is signed in yet.':st.state==='needs_install'?'Hermes is not installed yet.':'Hermes is not connected yet.')+'</span></div>'+
     '<label>AI</label><div class="prow"><button class="btn sel" id="aisetup">'+(ok?'Change AI':'Connect now')+'</button><button class="btn" id="aifix">Re-check Hermes</button><button class="btn" id="aitest">Test my AI</button></div><div class="prow"><span class="msg" id="aitestmsg"></span></div>'+
     '<div class="prow"><span class="msg">Sign-ins and API keys are stored by Hermes on this computer only; '+esc(an())+' never shows or uploads them.</span></div></div>';
   document.getElementById('aisetup').onclick=()=>openSetup({ai:true});
@@ -1505,10 +1681,10 @@ function renderAiTab(){
 }
 
 (async()=>{
-  await pollHealth();setOrb('idle');if(BR.online){loadHistory();loadFeatures();startEvents();loadUpdate();setInterval(loadUpdate,600000)}
+  await pollHealth();setOrb('idle');if(BR.online){loadSettings();loadHistory();loadFeatures();startEvents();loadUpdate();setInterval(loadUpdate,600000)}
   setInterval(pollHealth,4000);setInterval(pollSystem,2000);pollSystem();
 })();
-window.__hud={openSetup,SU,ATLAS,openMod,FT,ftUpdate,askHermes,look,voiceToggle,state:()=>({online:BR.online,orb:orbMode,msgs:MSGS.slice(),caption:cap.textContent,captionErr:cap.classList.contains('err')})};   /* read-only snapshot for the dev tests */
+window.__hud={openSetup,SU,ATLAS,openMod,FT,ftUpdate,askHermes,look,voiceToggle,CONV,convIsEnd,closeSetup,setSpeak:v=>{speakOn=!!v},speakOn:()=>speakOn,an:()=>an(),prof:()=>PROF,sets:()=>SETS,state:()=>({online:BR.online,rec:{speech:REC.speech,conv:REC.conv,lvl:lvl,state:REC.rec&&REC.rec.state},orb:orbMode,msgs:MSGS.slice(),caption:cap.textContent,captionErr:cap.classList.contains('err')})};   /* read-only snapshot for the dev tests */
 })();
 </script>
 </body>

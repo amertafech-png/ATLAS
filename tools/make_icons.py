@@ -51,7 +51,10 @@ def master():
 m = master()
 os.makedirs(OUT, exist_ok=True)
 m.resize((256, 256), Image.LANCZOS).save(os.path.join(OUT, 'atlas.png'))
-m.save(os.path.join(OUT, 'atlas.ico'), sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import icolib
+icolib.write_ico(m, os.path.join(OUT, 'atlas.ico'))
+print('ico:', icolib.check_ico(os.path.join(OUT, 'atlas.ico')))
 m.save(os.path.join(OUT, 'atlas.icns'), sizes=[(16,16),(32,32),(64,64),(128,128),(256,256),(512,512),(1024,1024)])
 m.save('/tmp/atlas-master.png')
 print('icons written')

@@ -13,22 +13,15 @@
 #  Options: run  ATLAS-Setup.bat uninstall  to remove ATLAS;  ATLAS-Setup.bat /update  for a silent in-place update.
 # =====================================================================================
 param([string]$Action = '', [switch]$Yes, [switch]$Update, [string]$ExtractTo = '')
-# ATLAS-Setup.bat /update  = non-interactive in-place update (used by ATLAS's self-update): keeps data + Hermes setup, restarts the bridge
+# ATLAS-Setup.bat /update  = silent in-place update (used by ATLAS's self-update): keeps data + Hermes setup + your earlier choices, restarts the bridge
 if ($Action -match '^[-/]{1,2}update$') { $Update = $true; $Action = '' }
 if ($Update) { $Yes = $true }
 $ErrorActionPreference = 'Continue'
-function Step($t) { Write-Host ""; Write-Host "==> $t" -ForegroundColor Cyan }
-function Ok($t)   { Write-Host "  [ok] $t" -ForegroundColor Green }
-function Warn($t) { Write-Host "  [!]  $t" -ForegroundColor Yellow }
-function Err($t)  { Write-Host "  [x]  $t" -ForegroundColor Red }
-function Ask([string]$q, [bool]$def = $true) {
-    if ($Yes) { return $def }
-    $hint = if ($def) { '[Y/n]' } else { '[y/N]' }
-    $a = (Read-Host "  $q $hint").Trim().ToLower()
-    if (-not $a) { return $def }
-    return ($a -eq 'y' -or $a -eq 'yes')
-}
-function Finish([int]$code = 0) { if ((-not $Yes) -or ($Update -and $code -ne 0)) { Write-Host ""; [void](Read-Host "Press Enter to close") }; exit $code }
+# There are NO console prompts anywhere. Questions are asked on the Options page of the installer window; -Yes / /update never ask (saved or default choices).
+function Ok($t)   { Write-Host "  [ok] $t" -ForegroundColor Green;  Ui-Log "[ok] $t" }
+function Warn($t) { Write-Host "  [!]  $t" -ForegroundColor Yellow; Ui-Log "[!] $t" }
+function Err($t)  { Write-Host "  [x]  $t" -ForegroundColor Red;    Ui-Log "[x] $t" }
+function Say($t)  { Write-Host "  $t"; Ui-Log $t }
 
 $Data    = if ($env:ATLAS_HOME) { $env:ATLAS_HOME } else { Join-Path $env:LOCALAPPDATA 'ATLAS' }
 $AppDir  = Join-Path $Data 'app'
@@ -79,6 +72,157 @@ function Find-Hermes {
     }
     return [bool](Get-Command hermes -ErrorAction SilentlyContinue)
 }
+# ---- installer window (no console prompts): a tiny local web page served from this script, shown in an Edge/Chrome app window ----
+$script:UiDir = ''        # '' = headless (no window): -Yes, /update, or the window could not start
+$script:UiState = [ordered]@{ phase = 'starting'; platform = 'windows'; version = ''; mode = 'install'; steps = @(); status = ''; progress = 0; log = @(); options = @(); installed = $false; installed_version = ''; can_back = $false; blurb = ''; result = $null }
+$script:UiSteps = @()     # @{id; label; state; weight}
+$script:UiLogLines = New-Object System.Collections.ArrayList
+$script:UiPs = $null; $script:UiListener = $null; $script:UiProc = $null
+function Ui-Flush {
+    if (-not $script:UiDir) { return }
+    $script:UiState.steps = @($script:UiSteps | ForEach-Object { [ordered]@{ id = $_.id; label = $_.label; state = $_.state } })
+    $n = $script:UiLogLines.Count; $from = [Math]::Max(0, $n - 60)
+    $script:UiState.log = @($script:UiLogLines.GetRange($from, $n - $from))
+    $json = $script:UiState | ConvertTo-Json -Depth 6 -Compress
+    $tmp = Join-Path $script:UiDir 'state.tmp'; $dst = Join-Path $script:UiDir 'state.json'
+    try {
+        [IO.File]::WriteAllText($tmp, $json, (New-Object Text.UTF8Encoding($false)))
+        if (Test-Path $dst) { [IO.File]::Replace($tmp, $dst, $null) } else { [IO.File]::Move($tmp, $dst) }
+    } catch { try { Copy-Item -LiteralPath $tmp -Destination $dst -Force } catch { } }
+}
+function Ui-Log([string]$t) {
+    if ([string]::IsNullOrWhiteSpace($t)) { return }
+    [void]$script:UiLogLines.Add($t.TrimEnd())
+    if ($script:UiDir) { Ui-Flush }
+}
+function Ui-Plan($list) {
+    $script:UiSteps = @($list | ForEach-Object { @{ id = $_[0]; label = $_[1]; weight = $_[2]; state = 'pending' } })
+    $script:UiSub = 0.0; Ui-Update-Progress
+}
+function Ui-Update-Progress {
+    $tot = 0.0; $done = 0.0
+    foreach ($t in $script:UiSteps) {
+        $tot += $t.weight
+        if ($t.state -in @('ok', 'skip')) { $done += $t.weight } elseif ($t.state -eq 'run') { $done += $t.weight * $script:UiSub }
+    }
+    if ($tot -gt 0) { $script:UiState.progress = [Math]::Round(100.0 * $done / $tot, 1) }
+}
+function Ui-Step([string]$id, [string]$status = '') {
+    foreach ($t in $script:UiSteps) {
+        if ($t.state -eq 'run') { $t.state = 'ok' }
+        if ($t.id -eq $id) { $t.state = 'run'; Write-Host ""; Write-Host "==> $($t.label)" -ForegroundColor Cyan }
+    }
+    $script:UiSub = 0.0
+    if (-not $status) { $status = ($script:UiSteps | Where-Object { $_.id -eq $id } | Select-Object -First 1).label }
+    $script:UiState.status = $status; Ui-Update-Progress; Ui-Flush
+}
+function Ui-Skip([string]$id) { foreach ($t in $script:UiSteps) { if ($t.id -eq $id) { $t.state = 'skip' } }; Ui-Update-Progress; Ui-Flush }
+function Ui-Status([string]$t, $sub = $null) {
+    Write-Host "  $t"
+    $script:UiState.status = $t
+    if ($null -ne $sub) { $script:UiSub = [double]$sub }
+    Ui-Update-Progress; Ui-Flush
+}
+function Ui-Fail([string]$id) { foreach ($t in $script:UiSteps) { if ($t.id -eq $id -or $t.state -eq 'run') { $t.state = 'fail' } }; Ui-Flush }
+function Ui-Done([bool]$ok, [string]$title, [string]$msg) {
+    if ($ok) { foreach ($t in $script:UiSteps) { if ($t.state -in @('run', 'pending')) { $t.state = 'ok' } }; $script:UiState.progress = 100 }
+    $script:UiState.phase = 'done'
+    $script:UiState.result = [ordered]@{ ok = $ok; title = $title; message = $msg }
+    Ui-Flush
+}
+# run a program, stream its output into the Details log, return its exit code
+function Run-Logged([string]$exe, [string[]]$argList) {
+    $global:LASTEXITCODE = 0
+    & $exe @argList 2>&1 | ForEach-Object { $l = "$_"; if ($l.Trim()) { Write-Host "    $l"; Ui-Log $l } }
+    return $LASTEXITCODE
+}
+function Start-UiServer([string]$dir, [string]$token) {
+    $listener = $null; $port = 0
+    foreach ($i in 1..60) {
+        $port = Get-Random -Minimum 49200 -Maximum 65000
+        $l = New-Object System.Net.HttpListener
+        $l.Prefixes.Add("http://127.0.0.1:$port/")
+        try { $l.Start(); $listener = $l; break } catch { }
+    }
+    if (-not $listener) { return 0 }
+    $rs = [runspacefactory]::CreateRunspace(); $rs.Open()
+    $ps = [powershell]::Create(); $ps.Runspace = $rs
+    [void]$ps.AddScript({
+        param($l, $dir, $token, $port)
+        $utf8 = New-Object Text.UTF8Encoding($false)
+        while ($l.IsListening) {
+            try { $ctx = $l.GetContext() } catch { break }
+            $res = $ctx.Response
+            try {
+                $req = $ctx.Request
+                $h = $req.Headers['Host']
+                $code = 200; $type = 'application/json'; $bytes = $null
+                if ((($h -ne "127.0.0.1:$port") -and ($h -ne "localhost:$port")) -or ($req.QueryString['t'] -ne $token)) { $code = 403; $type = 'text/plain'; $bytes = $utf8.GetBytes('forbidden') }
+                else {
+                    $path = $req.Url.AbsolutePath
+                    if ($req.HttpMethod -eq 'GET' -and $path -eq '/') {
+                        $type = 'text/html; charset=utf-8'; $bytes = [IO.File]::ReadAllBytes((Join-Path $dir 'ui.html'))
+                    } elseif ($req.HttpMethod -eq 'GET' -and $path -eq '/state') {
+                        for ($k = 0; $k -lt 5 -and -not $bytes; $k++) { try { $bytes = [IO.File]::ReadAllBytes((Join-Path $dir 'state.json')) } catch { Start-Sleep -Milliseconds 40 } }
+                        if (-not $bytes) { $bytes = $utf8.GetBytes('{"phase":"starting"}') }
+                    } elseif ($req.HttpMethod -eq 'POST' -and $path -eq '/answer') {
+                        $sr = New-Object IO.StreamReader($req.InputStream, $utf8); $body = $sr.ReadToEnd(); $sr.Close()
+                        $tmp = Join-Path $dir 'answer.tmp'; [IO.File]::WriteAllText($tmp, $body, $utf8)
+                        $dst = Join-Path $dir 'answer.json'; if (Test-Path $dst) { Remove-Item $dst -Force }
+                        [IO.File]::Move($tmp, $dst)
+                        $bytes = $utf8.GetBytes('{"ok":true}')
+                    } else { $code = 404; $type = 'text/plain'; $bytes = $utf8.GetBytes('no') }
+                    [IO.File]::WriteAllText((Join-Path $dir 'seen'), [string][DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+                }
+                $res.StatusCode = $code; $res.ContentType = $type; $res.Headers.Add('Cache-Control', 'no-store')
+                $res.ContentLength64 = $bytes.Length; $res.OutputStream.Write($bytes, 0, $bytes.Length)
+            } catch { }
+            finally { try { $res.OutputStream.Close() } catch { } }
+        }
+    }).AddArgument($listener).AddArgument($dir).AddArgument($token).AddArgument($port)
+    [void]$ps.BeginInvoke()
+    $script:UiPs = $ps; $script:UiListener = $listener
+    return $port
+}
+function Stop-UiServer {
+    try { if ($script:UiListener) { $script:UiListener.Stop(); $script:UiListener.Close() } } catch { }
+    try { if ($script:UiPs) { $script:UiPs.Stop(); $script:UiPs.Runspace.Close() } } catch { }
+    try { if ($script:UiProc -and -not $script:UiProc.HasExited) { [void]$script:UiProc.CloseMainWindow() } } catch { }
+}
+function Open-UiWindow([string]$url, [string]$profileDir) {
+    $exes = @()
+    foreach ($n in @('msedge.exe', 'chrome.exe')) { $c = Get-Command $n -ErrorAction SilentlyContinue; if ($c) { $exes += $c.Source } }
+    $pf86 = [Environment]::GetFolderPath('ProgramFilesX86')
+    $exes += @("$pf86\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "$pf86\Google\Chrome\Application\chrome.exe")
+    foreach ($e in $exes) {
+        if ($e -and (Test-Path $e)) {
+            try {
+                $script:UiProc = Start-Process -FilePath $e -ArgumentList @("--app=$url", "--user-data-dir=$profileDir", '--window-size=880,760', '--no-first-run', '--no-default-browser-check') -PassThru
+                return $true
+            } catch { }
+        }
+    }
+    try { Start-Process $url; return $true } catch { return $false }
+}
+function Read-Answer {
+    $f = Join-Path $script:UiDir 'answer.json'
+    if (-not (Test-Path $f)) { return $null }
+    try { $j = Get-Content -Raw -LiteralPath $f | ConvertFrom-Json; Remove-Item $f -Force -ErrorAction SilentlyContinue; return $j } catch { return $null }
+}
+# wait for the user's next click; $null = the window was closed / nobody answered
+function Wait-Answer([int]$maxSeconds = 1800) {
+    $t0 = Get-Date
+    while (((Get-Date) - $t0).TotalSeconds -lt $maxSeconds) {
+        $a = Read-Answer
+        if ($a) { return $a }
+        $seen = Join-Path $script:UiDir 'seen'
+        if (Test-Path $seen) { if (((Get-Date) - (Get-Item $seen).LastWriteTime).TotalSeconds -gt 25) { return $null } }
+        elseif (((Get-Date) - $t0).TotalSeconds -gt 120) { return $null }
+        Start-Sleep -Milliseconds 250
+    }
+    return $null
+}
+$script:UiSub = 0.0
 # ---- shortcuts without Windows Script Host: .lnk files are written through the Windows shell-link API (IShellLink) ----
 $PsExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
 function Initialize-LinkApi {
@@ -120,6 +264,9 @@ public static class AtlasLnk {
         void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
         void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string ppszFileName);
     }
+    [DllImport("shell32.dll")] private static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
+    // tell Explorer that icons changed (SHCNE_ASSOCCHANGED) so shortcuts that showed a blank page get redrawn
+    public static void Refresh() { SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero); }
     public static void Create(string lnk, string target, string args, string workDir, string icon, string desc, int showCmd) {
         IShellLinkW l = (IShellLinkW)new ShellLinkCoClass();
         l.SetPath(target);
@@ -156,9 +303,20 @@ function Get-AtlasLaunchArgs([string]$mode) {
 function New-Shortcut([string]$path, [string]$mode, [string]$desc) {
     if (-not (Initialize-LinkApi)) { return $false }
     try {
-        [AtlasLnk]::Create($path, $PsExe, (Get-AtlasLaunchArgs $mode), $AppDir, ((Join-Path $AppDir 'assets\atlas.ico') + ',0'), $desc, 7)
+        # IconLocation = the installed atlas.ico (absolute path, no ",0" glued on - SetIconLocation takes the index as its own argument; icon index 0)
+        $ico = Join-Path $AppDir 'assets\atlas.ico'
+        if (-not (Test-Path -LiteralPath $ico)) { $ico = '' }
+        [AtlasLnk]::Create($path, $PsExe, (Get-AtlasLaunchArgs $mode), $AppDir, $ico, $desc, 7)
         return $true
     } catch { return $false }
+}
+# make Explorer redraw shortcut icons now (old shortcuts and the icon cache may still show a blank page)
+function Refresh-IconCache {
+    try { if (Initialize-LinkApi) { [AtlasLnk]::Refresh() } } catch { }
+    try {
+        $ie = Join-Path $env:WINDIR 'System32\ie4uinit.exe'
+        if (Test-Path $ie) { $p = Start-Process -FilePath $ie -ArgumentList '-show' -WindowStyle Hidden -PassThru; [void]$p.WaitForExit(8000) }
+    } catch { }
 }
 # plain .cmd launcher, only used when a shortcut could not be written (locked-down PCs)
 function New-CmdLauncher([string]$path, [string]$mode) {
@@ -203,7 +361,7 @@ function Migrate-FromOldName {
     $oldLinks = @((Join-Path $Desktop 'MODI.lnk'), (Join-Path $Startup 'MODI bridge.lnk'))   #legacy-modi
     $has = (Test-Path -LiteralPath $OldData) -or (Test-Path -LiteralPath $OldStartMenu) -or ($oldLinks | Where-Object { Test-Path -LiteralPath $_ })
     if (-not $has -or ($OldData -eq $Data)) { return }
-    Step 'Upgrading from MODI: ATLAS keeps your settings, notes and voices'   # legacy-modi
+    Say 'Upgrading from MODI: ATLAS keeps your settings, notes and voices'   # legacy-modi
     # 1. stop the old bridge (same port as before) and anything still running from the old folder
     $op = 8765
     $oc = Join-Path $OldData 'config.json'
@@ -251,173 +409,313 @@ function Repair-LegacyLaunchers {
 
 if ($ExtractTo) { Extract-Payload $ExtractTo; Write-Host "Extracted to $ExtractTo"; exit 0 }
 
-Write-Host ""
-Write-Host "  ATLAS  -  personal command interface for Hermes Agent  (Windows installer)" -ForegroundColor Cyan
+$AtlasVersion = ''
+$Stage = ''            # the installer's own files, unpacked once (also holds the window's page)
+$UiRoot = ''
+$OptFile = Join-Path $Data 'install-options.json'
+$script:Failed = ''
 
-# ---------- uninstall ----------
-function Do-Uninstall {
-    Step 'Uninstalling ATLAS'
+function Get-InstalledVersion {
+    foreach ($m in @((Join-Path $AppDir 'bridge\atlas_meta.py'), (Join-Path $OldData 'app\bridge\modi_meta.py'))) {   # legacy-modi
+        if (Test-Path $m) { $x = [regex]::Match((Get-Content $m -Raw), 'VERSION\s*=\s*"([^"]+)"'); if ($x.Success) { return $x.Groups[1].Value } }
+    }
+    return ''
+}
+function Test-Installed { return ((Test-Path (Join-Path $AppDir 'bridge\bridge.py')) -or (Test-Path (Join-Path $OldData 'app\bridge\bridge.py'))) }   # legacy-modi
+function Read-SavedOptions {
+    $o = @{}
+    if (Test-Path $OptFile) { try { (Get-Content $OptFile -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $o[$_.Name] = [bool]$_.Value } } catch { } }
+    return $o
+}
+# every question the old console installer asked, now one row on the Options page: id, group, label, one-line explanation, download size, default
+function Get-OptionDefs([string]$mode) {
+    $saved = Read-SavedOptions
+    $defs = @()
+    if ($mode -eq 'uninstall') {
+        $defs += @{ id = 'delete_data'; group = 'Uninstall'; label = "Also delete ATLAS's saved data"; desc = 'Notes, settings, voice and speech models, window profile and logs. Off = keep them in case you reinstall.'; size = ''; value = $false }
+        if (Find-Hermes) { $defs += @{ id = 'hermes_api_off'; group = 'Uninstall'; label = "Turn Hermes' local API server off again"; desc = 'Hermes itself is never removed. Leave this off if other tools use its API.'; size = ''; value = $false } }
+        return $defs
+    }
+    $needPy = -not (Find-Python)
+    if ($needPy -and -not (Test-Path (Join-Path $AppDir '.venv\Scripts\python.exe'))) {
+        $hasWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
+        $defs += @{ id = 'python'; group = 'Needed'; label = 'Python 3.12 (required)'; desc = $(if ($hasWinget) { 'ATLAS runs on Python and it is not on this computer, so setup adds it with winget (from python.org).' } else { 'ATLAS needs Python 3.11+ and winget is not available: setup will open python.org so you can install it, then you run Setup again.' }); size = '~30 MB'; value = $true; disabled = $true }
+    }
+    if (-not (Find-Hermes)) {
+        $defs += @{ id = 'hermes'; group = 'AI'; label = 'Install Hermes Agent'; desc = "The AI engine ATLAS talks to (official installer from hermes-agent.nousresearch.com). Skip it if you will install Hermes yourself."; size = '~1 GB'; value = $true }
+    }
+    if (-not (Get-Command ollama -ErrorAction SilentlyContinue) -and -not (Test-Path (Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe'))) {
+        $defs += @{ id = 'ollama'; group = 'AI'; label = 'Install Ollama for local models'; desc = 'Only if you want an AI that runs on this computer instead of ChatGPT/Claude/Grok (official installer from ollama.com; models are downloaded later, only when you pick one).'; size = '~1.9 GB'; value = $false }
+    }
+    $defs += @{ id = 'speech'; group = 'Voice'; label = 'Download the speech models now'; desc = 'Whisper (hearing you) and a Piper voice (speaking). Off = they download the first time you talk to ATLAS.'; size = '~210 MB'; value = $true }
+    if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+        $defs += @{ id = 'cuda'; group = 'Voice'; label = 'NVIDIA CUDA libraries for faster voice'; desc = 'Lets speech recognition use your NVIDIA graphics card. The CPU is already fast for the normal model.'; size = '~1 GB'; value = $false }
+    }
+    $defs += @{ id = 'wake'; group = 'Voice'; label = 'Download the "Hey ATLAS" wake-word model now'; desc = 'Optional hands-free wake word. This only downloads it; you switch it on later in Settings > Features.'; size = '~55 MB'; value = $false }
+    $defs += @{ id = 'desktop'; group = 'Shortcuts'; label = 'Desktop shortcut'; desc = 'An ATLAS icon on your Desktop. (The Start Menu entry is always added.)'; size = ''; value = $true }
+    $defs += @{ id = 'login'; group = 'Shortcuts'; label = 'Start ATLAS when I sign in'; desc = 'Starts the background part only, so ATLAS is ready when you open it. No window appears by itself.'; size = ''; value = $true }
+    foreach ($d in $defs) { if ($saved.ContainsKey($d.id) -and -not $d.disabled) { $d.value = $saved[$d.id] } }
+    return $defs
+}
+function Get-OptionValues($defs, $answer) {
+    $o = @{}
+    foreach ($d in $defs) { $o[$d.id] = [bool]$d.value }
+    if ($answer -and $answer.PSObject.Properties) { foreach ($p in $answer.PSObject.Properties) { if ($o.ContainsKey($p.Name)) { $o[$p.Name] = [bool]$p.Value } } }
+    return $o
+}
+# -Update keeps what the user chose last time; an install from before this file existed is read off the machine
+function Get-UpdateOptions($defs) {
+    $o = Get-OptionValues $defs $null
+    if (-not (Test-Path $OptFile)) {
+        $o['login'] = (Test-Path (Join-Path $Startup 'ATLAS bridge.lnk')) -or (Test-Path (Join-Path $Startup 'ATLAS bridge.cmd')) -or $script:MigratedStartup
+        $o['desktop'] = $true
+        $o['speech'] = $false; $o['wake'] = $false; $o['ollama'] = $false; $o['cuda'] = $false
+    } else { $o['speech'] = $false; $o['wake'] = $false; $o['ollama'] = $false }   # downloads are not repeated on an update
+    return $o
+}
+
+function Fail-Install([string]$step, [string]$msg) {
+    Err $msg
+    Ui-Fail $step
+    $script:Failed = $msg
+    throw 'ATLAS-INSTALL-FAILED'
+}
+
+function Run-Uninstall($o) {
+    Ui-Plan @(@('stop', 'Stop ATLAS', 10), @('files', 'Remove ATLAS files and shortcuts', 60), @('extra', 'Optional clean-up', 20), @('done', 'Done', 0))
+    Ui-Step 'stop' 'Stopping ATLAS'
     if (Stop-Bridge) { Ok 'bridge stopped' }
+    Ui-Step 'files' 'Removing files and shortcuts'
     foreach ($f in @((Join-Path $Desktop 'ATLAS.lnk'), (Join-Path $Desktop 'ATLAS.cmd'), (Join-Path $Startup 'ATLAS bridge.lnk'), (Join-Path $Startup 'ATLAS bridge.cmd'))) { if (Test-Path $f) { Remove-Item $f -Force; Ok "removed $f" } }
     if (Test-Path $StartMenu) { Remove-Item $StartMenu -Recurse -Force; Ok 'removed Start Menu entries' }
     if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force -ErrorAction SilentlyContinue; Ok "removed $AppDir" }
-    if ((Test-Path $Data) -and (Ask "Also delete ATLAS's saved data (notes, voice and speech models, window profile, logs)?" $false)) {
-        Remove-Item $Data -Recurse -Force -ErrorAction SilentlyContinue; Ok "removed $Data"
-    }
-    Write-Host "  Hermes Agent itself was NOT touched. The API key ATLAS added (API_SERVER_KEY in Hermes' .env) stays, so other tools keep working."
-    if ((Find-Hermes) -and (Ask "Turn Hermes' local API server off again?" $false)) {
-        hermes config set API_SERVER_ENABLED false | Out-Null; hermes gateway restart --detach --yes | Out-Null; Ok 'Hermes API server disabled'
-    }
-    Ok 'ATLAS uninstalled.'
-    Finish 0
-}
-if ($Action -eq 'uninstall') { Do-Uninstall }
-if (-not $Yes -and -not $Action) {
-    Write-Host ""; Write-Host "  1) Install / update ATLAS"; Write-Host "  2) Uninstall ATLAS"; Write-Host "  3) Quit"
-    $c = Read-Host "  Choose [1]"
-    if ($c -eq '2') { Do-Uninstall }
-    if ($c -eq '3') { exit 0 }
+    Ui-Step 'extra' 'Optional clean-up'
+    if ($o.delete_data -and (Test-Path $Data)) { Remove-Item $Data -Recurse -Force -ErrorAction SilentlyContinue; Ok "removed $Data (your saved data)" }
+    elseif (Test-Path $Data) { Say "your saved data stays in $Data" }
+    if ($o.hermes_api_off -and (Find-Hermes)) { hermes config set API_SERVER_ENABLED false | Out-Null; hermes gateway restart --detach --yes | Out-Null; Ok 'Hermes API server disabled' }
+    Say "Hermes Agent itself was NOT touched. The API key ATLAS added (API_SERVER_KEY in Hermes' .env) stays, so other tools keep working."
+    Refresh-IconCache
+    Ui-Done $true 'ATLAS was uninstalled' 'Hermes Agent was left alone. You can delete this installer file.'
 }
 
-Migrate-FromOldName
-# a Python environment that was moved along with the data folder normally still works; if it does not, it is rebuilt below
-$mv = Join-Path $AppDir '.venv\Scripts\python.exe'
-if (Test-Path $mv) {
-    & $mv -c 'import aiohttp, psutil' 2>$null
-    if ($LASTEXITCODE -ne 0) { Remove-Item (Join-Path $AppDir '.venv') -Recurse -Force -ErrorAction SilentlyContinue }
-}
+function Run-Install($o, [string]$mode) {
+    $isUpdate = [bool]$Update      # only the silent /update skips the optional downloads; an interactive re-run honours the Options page
+    $plan = @(@('copy', 'Copy files', 6), @('python', 'Python 3.11+', 8), @('components', 'Install components', 42), @('hermes', 'Hermes Agent (find or install, connect key, start)', 24))
+    if ($o.ollama) { $plan += , @('ollama', 'Ollama (local models)', 12) }
+    $plan += , @('shortcuts', 'Shortcuts and start-at-login', 6)
+    $plan += , @('done', 'Done', 0)
+    Ui-Plan $plan
 
-# ---------- 1. Python ----------
-Step '1/5  Checking Python 3.11+'
-$Py = $null
-if ($Update -and (Test-Path (Join-Path $AppDir '.venv\Scripts\python.exe'))) { Ok 'update mode: using the existing Python environment' }
-else { $Py = Find-Python }
-if (-not $Py -and -not ($Update -and (Test-Path (Join-Path $AppDir '.venv\Scripts\python.exe')))) {
-    Warn 'No Python 3.11 or newer found.'
-    if ((Get-Command winget -ErrorAction SilentlyContinue) -and (Ask 'Install Python 3.12 with winget now?' $true)) {
-        winget install -e --id Python.Python.3.12 --accept-package-agreements --accept-source-agreements
-        Refresh-Path; $Py = Find-Python
-    } elseif (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Start-Process 'https://www.python.org/downloads/windows/'
-        Write-Host '  Install Python 3.12 (tick "Add python.exe to PATH"), then run this installer again.'
+    # ---- 1. copy files ----
+    Ui-Step 'copy' 'Copying ATLAS files'
+    Migrate-FromOldName
+    $mv = Join-Path $AppDir '.venv\Scripts\python.exe'    # a Python environment that moved along with the data folder normally still works; if not it is rebuilt
+    if (Test-Path $mv) { & $mv -c 'import aiohttp, psutil' 2>$null; if ($LASTEXITCODE -ne 0) { Remove-Item (Join-Path $AppDir '.venv') -Recurse -Force -ErrorAction SilentlyContinue } }
+    if (Stop-Bridge) {
+        for ($i = 0; $i -lt 40; $i++) { try { Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$(Get-Port)/api/health" -TimeoutSec 1 | Out-Null; Start-Sleep -Milliseconds 500 } catch { break } }
     }
-    if (-not $Py) { Err 'Python 3.11+ is not available.'; Finish 1 }
-}
-if ($Py) { Ok "Python: $Py" }
+    New-Item -ItemType Directory -Force -Path $AppDir, (Join-Path $Data 'logs') | Out-Null
+    foreach ($d in @('bridge', 'assets', 'mac', 'win', 'installer')) { $t = Join-Path $AppDir $d; if (Test-Path $t) { Remove-Item $t -Recurse -Force } }
+    Remove-Item (Join-Path $AppDir 'index.html') -Force -ErrorAction SilentlyContinue
+    if ($Stage -and (Test-Path $Stage)) { Copy-Item -Path (Join-Path $Stage '*') -Destination $AppDir -Recurse -Force } else { Extract-Payload $AppDir }
+    Get-ChildItem $AppDir -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
+    Ok "files installed in $AppDir"
 
-# ---------- 2. Hermes ----------
-Step '2/5  Hermes Agent'
-$HermesOk = Find-Hermes
-if (-not $HermesOk -and -not $Update) {
-    Warn 'Hermes Agent is not installed.'
-    if (Ask 'Install it now with the official installer (https://hermes-agent.nousresearch.com/install.ps1)?' $true) {
+    # ---- 2. Python ----
+    Ui-Step 'python' 'Checking for Python 3.11+'
+    $Py = $null
+    $VenvPy = Join-Path $AppDir '.venv\Scripts\python.exe'
+    if ($isUpdate -and (Test-Path $VenvPy)) { Ok 'using the existing Python environment' }
+    else {
+        $Py = Find-Python
+        if (-not $Py) {
+            Warn 'No Python 3.11 or newer found.'
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                Ui-Status 'Installing Python 3.12 with winget (this can take a few minutes)...'
+                $rc = Run-Logged 'winget' @('install', '-e', '--id', 'Python.Python.3.12', '--accept-package-agreements', '--accept-source-agreements')
+                Refresh-Path; $Py = Find-Python
+            } else {
+                Start-Process 'https://www.python.org/downloads/windows/'
+                Fail-Install 'python' 'Python 3.11+ is needed. python.org was opened: install Python 3.12 (tick "Add python.exe to PATH"), then run this installer again.'
+            }
+        }
+        if (-not $Py) { Fail-Install 'python' 'Python 3.11+ could not be installed. Install it from python.org (tick "Add python.exe to PATH") and run this installer again.' }
+        Ok "Python: $Py"
+    }
+
+    # ---- 3. components ----
+    Ui-Step 'components' 'Setting up the Python environment'
+    if (-not (Test-Path $VenvPy)) { & $Py -m venv (Join-Path $AppDir '.venv'); if ($LASTEXITCODE -ne 0) { Fail-Install 'components' 'Could not create the Python environment.' } }
+    [void](Run-Logged $VenvPy @('-m', 'pip', 'install', '--quiet', '--upgrade', 'pip'))
+    Ui-Status 'Installing ATLAS packages (aiohttp, faster-whisper, piper-tts, psutil...) - a few minutes the first time' 0.1
+    $rc = Run-Logged $VenvPy @('-m', 'pip', 'install', '--disable-pip-version-check', '--progress-bar', 'off', '-r', (Join-Path $AppDir 'bridge\requirements.txt'))
+    if ($rc -ne 0) { Fail-Install 'components' 'Installing the Python packages failed (see Details). Check your internet connection and run the installer again.' }
+    Ok 'Python packages installed'
+    Ui-Status 'Checking optional feature packages' 0.55
+    $rc = Run-Logged $VenvPy @((Join-Path $AppDir 'bridge\bridge.py'), '--install-deps')
+    if ($rc -ne 0) { Warn 'some optional feature packages could not be installed (see Settings in ATLAS)' }
+    if ($o.cuda -and -not $isUpdate) {
+        Ui-Status 'Installing the NVIDIA CUDA libraries (about 1 GB)...' 0.6
+        $rc = Run-Logged $VenvPy @('-m', 'pip', 'install', '--progress-bar', 'off', 'nvidia-cublas-cu12', 'nvidia-cudnn-cu9')
+        if ($rc -eq 0) {
+            $cfg = Join-Path $Data 'config.json'
+            & $VenvPy -c "import json,sys; p=sys.argv[1]; c=json.load(open(p)) if __import__('os').path.exists(p) else {}; c.setdefault('stt',{})['device']='cuda'; json.dump(c,open(p,'w'),indent=2)" $cfg
+            Ok 'speech recognition set to use the GPU (stt.device = cuda in config.json)'
+        } else { Warn 'the CUDA libraries could not be installed - speech recognition stays on the CPU' }
+    }
+    if ($o.speech -and -not $isUpdate) {
+        Ui-Status 'Downloading the speech models (about 210 MB)...' 0.7
+        $rc = Run-Logged $VenvPy @((Join-Path $AppDir 'bridge\bridge.py'), '--prefetch')
+        if ($rc -ne 0) { Warn 'model download had problems - ATLAS will retry on first use' }
+    }
+    if ($o.wake -and -not $isUpdate) {
+        Ui-Status 'Downloading the wake-word model (about 55 MB)...' 0.9
+        $rc = Run-Logged $VenvPy @((Join-Path $AppDir 'bridge\bridge.py'), '--prefetch-wake')
+        if ($rc -ne 0) { Warn 'the wake-word model could not be downloaded now - Settings > Features will fetch it when you switch the wake word on' }
+    }
+
+    # ---- 4. Hermes: find / install, connect the key, start ----
+    Ui-Step 'hermes' 'Looking for Hermes Agent'
+    $HermesOk = Find-Hermes
+    if (-not $HermesOk -and $o.hermes -and -not $isUpdate) {
+        Ui-Status 'Installing Hermes Agent with its official installer (a few minutes, nothing to type)...' 0.1
         try {
             $hi = Join-Path $env:TEMP 'hermes-install.ps1'
             Invoke-WebRequest -UseBasicParsing -Uri 'https://hermes-agent.nousresearch.com/install.ps1' -OutFile $hi
-            & (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File $hi -NonInteractive
+            $rc = Run-Logged (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $hi, '-NonInteractive')
             Remove-Item $hi -Force -ErrorAction SilentlyContinue
         } catch { Err "Hermes installer failed: $_" }
         $HermesOk = Find-Hermes
     }
-}
-if ($HermesOk) { Ok "hermes: $((Get-Command hermes).Source)" }
-else { Warn "Hermes is not installed (yet). That's fine - ATLAS's first screen installs it with one click." }
+    if ($HermesOk) {
+        Ok "hermes: $((Get-Command hermes).Source)"
+        Ui-Status 'Connecting ATLAS to Hermes (private key, local API, start)...' 0.55
+        $rc = Run-Logged $VenvPy @((Join-Path $AppDir 'bridge\bridge.py'), '--connect-hermes')
+        if ($rc -ne 0) { Warn "Could not finish connecting to Hermes now - ATLAS's first screen has a 'Fix it' button for that." }
+    } else { Warn "Hermes is not installed (yet). That's fine - ATLAS's first screen installs it with one click." }
 
-# ---------- 3. Install ATLAS ----------
-Step "3/5  Installing ATLAS to $AppDir"
-if (Stop-Bridge) {
-    for ($i = 0; $i -lt 40; $i++) { try { Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$(Get-Port)/api/health" -TimeoutSec 1 | Out-Null; Start-Sleep -Milliseconds 500 } catch { break } }
-}
-New-Item -ItemType Directory -Force -Path $AppDir, (Join-Path $Data 'logs') | Out-Null
-foreach ($d in @('bridge', 'assets', 'mac', 'win')) { $t = Join-Path $AppDir $d; if (Test-Path $t) { Remove-Item $t -Recurse -Force } }
-Remove-Item (Join-Path $AppDir 'index.html') -Force -ErrorAction SilentlyContinue
-Extract-Payload $AppDir
-Get-ChildItem $AppDir -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
-Ok 'files installed'
+    # ---- 5. Ollama (optional) ----
+    if ($o.ollama -and -not $isUpdate) {
+        Ui-Step 'ollama' 'Downloading Ollama (about 1.9 GB)'
+        try {
+            $oi = Join-Path $env:TEMP 'OllamaSetup.exe'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://ollama.com/download/OllamaSetup.exe' -OutFile $oi
+            Ui-Status 'Installing Ollama...' 0.8
+            $p = Start-Process -FilePath $oi -ArgumentList '/SILENT' -PassThru -Wait
+            Remove-Item $oi -Force -ErrorAction SilentlyContinue
+            if (Test-Path (Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe')) { Ok 'Ollama installed (ATLAS will offer your local models in its AI step)' } else { Warn 'Ollama setup finished but ollama.exe was not found - you can install it from ollama.com/download later' }
+        } catch { Warn "Ollama could not be installed now: $_ (you can get it from ollama.com/download)" }
+    }
 
-$VenvPy = Join-Path $AppDir '.venv\Scripts\python.exe'
-if (-not (Test-Path $VenvPy)) { & $Py -m venv (Join-Path $AppDir '.venv'); if ($LASTEXITCODE -ne 0) { Err 'could not create the Python environment'; Finish 1 } }
-& $VenvPy -m pip install --quiet --upgrade pip 2>$null | Out-Null
-Write-Host '  installing Python packages (aiohttp, faster-whisper, piper-tts, psutil...) - a few minutes the first time'
-& $VenvPy -m pip install --quiet -r (Join-Path $AppDir 'bridge\requirements.txt')
-if ($LASTEXITCODE -ne 0) { Err 'pip install failed. See the messages above.'; Finish 1 }
-Ok 'Python packages installed'
-& $VenvPy (Join-Path $AppDir 'bridge\bridge.py') --install-deps
-if ($LASTEXITCODE -ne 0) { Warn 'some optional feature packages could not be installed (see Settings in ATLAS)' }
-if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
-    if (Ask 'NVIDIA GPU found. Install CUDA libraries so speech recognition can use it (about 1 GB)? CPU is already fast for the base model.' $false) {
-        & $VenvPy -m pip install --quiet nvidia-cublas-cu12 nvidia-cudnn-cu9
-        $cfg = Join-Path $Data 'config.json'
-        & $VenvPy -c "import json,sys; p=sys.argv[1]; c=json.load(open(p)) if __import__('os').path.exists(p) else {}; c.setdefault('stt',{})['device']='cuda'; json.dump(c,open(p,'w'),indent=2)" $cfg
-        Ok 'speech recognition set to use the GPU (stt.device = cuda in config.json)'
+    # ---- 6. shortcuts ----
+    Ui-Step 'shortcuts' 'Creating shortcuts'
+    Repair-LegacyLaunchers
+    $okAll = $true
+    New-Item -ItemType Directory -Force -Path $StartMenu | Out-Null
+    $okAll = (New-Shortcut (Join-Path $StartMenu 'ATLAS.lnk') 'Launch' 'ATLAS - personal command interface for Hermes Agent') -and $okAll
+    $okAll = (New-Shortcut (Join-Path $StartMenu 'Stop ATLAS.lnk') 'Stop' 'Stop the ATLAS bridge') -and $okAll
+    $dl = Join-Path $Desktop 'ATLAS.lnk'
+    if ($o.desktop) { $okAll = (New-Shortcut $dl 'Launch' 'ATLAS - personal command interface for Hermes Agent') -and $okAll }
+    elseif (Test-Path $dl) { Remove-Item $dl -Force -ErrorAction SilentlyContinue }
+    if ($okAll) { Ok 'shortcuts created (pin ATLAS to the taskbar from the Start Menu if you like)' }
+    else {
+        Warn 'Windows would not let this installer create shortcuts - made an ATLAS.cmd launcher instead.'
+        New-CmdLauncher (Join-Path $StartMenu 'ATLAS.cmd') 'Launch'
+        if ($o.desktop) { New-CmdLauncher (Join-Path $Desktop 'ATLAS.cmd') 'Launch' }
+    }
+    $sl = Join-Path $Startup 'ATLAS bridge.lnk'
+    if ($o.login) {
+        if (New-Shortcut $sl 'Bridge' 'ATLAS bridge at login') { Ok 'start-at-login enabled' }
+        else { New-CmdLauncher (Join-Path $Startup 'ATLAS bridge.cmd') 'Bridge'; Ok 'start-at-login enabled (.cmd)' }
+    } else {
+        foreach ($f in @($sl, (Join-Path $Startup 'ATLAS bridge.cmd'))) { if (Test-Path $f) { Remove-Item $f -Force } }
+    }
+    Refresh-IconCache
+    # remember the choices (an /update reuses them); a fresh install makes ATLAS open straight into its AI sign-in + "about you" screens
+    try { ($o | ConvertTo-Json -Compress) | Set-Content -LiteralPath $OptFile -Encoding ASCII } catch { }
+    if ($mode -eq 'install') { try { Set-Content -LiteralPath (Join-Path $Data 'first-run') -Value '1' -Encoding ASCII } catch { } }
+    Ui-Step 'done' 'All done'
+    if ($isUpdate) {
+        Start-Process -FilePath $PsExe -ArgumentList (Get-AtlasLaunchArgs 'Bridge') -WindowStyle Hidden
+        Ok 'ATLAS updated - the open ATLAS window reloads by itself'
+        Ui-Done $true 'ATLAS was updated' 'Your settings, notes and AI connection were kept.'
+    } else {
+        Ui-Done $true 'ATLAS is installed' 'Press Finish to open it.'
     }
 }
-if (-not $Update -and -not $Yes -and -not ((Test-Path (Join-Path $Data 'config.json')) -and ((Get-Content (Join-Path $Data 'config.json') -Raw) -match '"profile"'))) {
-    Write-Host '  A few personal touches (all optional - press Enter to skip; change them later in ATLAS > Settings):'
-    $pAName = Read-Host '  Name your assistant (Enter keeps ATLAS; 1-20 characters)'
-    $pName = Read-Host '  What should your assistant call you?'
-    $pCity = Read-Host '  Your city, for weather (e.g. Austin, Texas)'
-    $pSports = Read-Host '  Favorite sports, comma separated (Soccer, NFL, NBA, MLB, NHL, College football, F1, or your own)'
-    $pa = @((Join-Path $AppDir 'bridge\bridge.py'), '--set-profile')
-    if ($pAName) { $pa += @('--assistant', $pAName) }
-    if ($pName) { $pa += @('--name', $pName) }
-    if ($pCity) { $pa += @('--city', $pCity) }
-    foreach ($sp in ($pSports -split ',')) {
-        $sp = $sp.Trim()
-        if (-not $sp) { continue }
-        $lg = ''
-        if ($sp -ieq 'soccer') { $lg = (Read-Host "  $sp - leagues (e.g. Premier League, Serie A; Enter to skip)").Trim() }
-        $tm = (Read-Host "  $sp - favorite teams, comma separated (Enter to skip)").Trim()
-        $pa += @('--sport', "$sp|$lg|$tm")
-    }
-    if ($pa.Count -gt 2) { & $VenvPy @pa; if ($LASTEXITCODE -ne 0) { Warn 'could not save your profile - set it in ATLAS > Settings' } }
-}
-if ((-not $Update) -and (Ask "Download the speech models now (Whisper 'base' ~150 MB + Piper voice ~60 MB)? Otherwise they download on first use." $true)) {
-    & $VenvPy (Join-Path $AppDir 'bridge\bridge.py') --prefetch
-    if ($LASTEXITCODE -ne 0) { Warn 'model download had problems - ATLAS will retry on first use' }
-}
 
-# ---------- 4. Connect Hermes ----------
-Step '4/5  Connecting ATLAS to Hermes (nothing to type)'
-if ($HermesOk) {
-    & $VenvPy (Join-Path $AppDir 'bridge\bridge.py') --connect-hermes
-    if ($LASTEXITCODE -ne 0) { Warn "Could not finish connecting to Hermes now - ATLAS's first screen has a 'Fix it' button for that." }
-} else { Warn 'skipped - Hermes is not installed yet' }
-
-# ---------- 5. Shortcuts ----------
-Step '5/5  Shortcuts'
-Repair-LegacyLaunchers
-$okAll = $true
-$okAll = (New-Shortcut (Join-Path $Desktop 'ATLAS.lnk') 'Launch' 'ATLAS - personal command interface for Hermes Agent') -and $okAll
-New-Item -ItemType Directory -Force -Path $StartMenu | Out-Null
-$okAll = (New-Shortcut (Join-Path $StartMenu 'ATLAS.lnk') 'Launch' 'ATLAS - personal command interface for Hermes Agent') -and $okAll
-$okAll = (New-Shortcut (Join-Path $StartMenu 'Stop ATLAS.lnk') 'Stop' 'Stop the ATLAS bridge') -and $okAll
-if ($okAll) { Ok 'Desktop and Start Menu shortcuts created (pin ATLAS to the taskbar from the Start Menu if you like)' }
-else {
-    Warn 'Windows would not let this installer create shortcuts - made an ATLAS.cmd launcher on the Desktop and in the ATLAS folder instead.'
-    New-CmdLauncher (Join-Path $Desktop 'ATLAS.cmd') 'Launch'
-    New-CmdLauncher (Join-Path $StartMenu 'ATLAS.cmd') 'Launch'
+# ================================= main =================================
+function Exit-Setup([int]$code) {
+    Stop-UiServer
+    if ($UiRoot -and (Test-Path $UiRoot)) { Start-Sleep -Milliseconds 400; Remove-Item $UiRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    exit $code
 }
-$sl = Join-Path $Startup 'ATLAS bridge.lnk'
-if ($script:MigratedStartup) {
-    if (New-Shortcut $sl 'Bridge' 'ATLAS bridge at login') { Ok 'start-at-login kept (now ATLAS)' } else { New-CmdLauncher (Join-Path $Startup 'ATLAS bridge.cmd') 'Bridge' }
-} elseif ($Update) {
-    if (Test-Path $sl) { [void](New-Shortcut $sl 'Bridge' 'ATLAS bridge at login') }
-} elseif (Ask "Start ATLAS's bridge automatically when you sign in (no window until you open ATLAS)?" $false) {
-    if (New-Shortcut $sl 'Bridge' 'ATLAS bridge at login') { Ok 'start-at-login enabled' }
-    else { New-CmdLauncher (Join-Path $Startup 'ATLAS bridge.cmd') 'Bridge'; Ok 'start-at-login enabled (.cmd)' }
-} elseif (Test-Path $sl) { Remove-Item $sl -Force; Ok 'start-at-login removed' }
-
-if ($Update) {
-    Start-Process -FilePath $PsExe -ArgumentList (Get-AtlasLaunchArgs 'Bridge') -WindowStyle Hidden
-    Ok 'ATLAS updated - the open ATLAS window reloads by itself'
-    Finish 0
-}
-
+$Mode = if ($Update) { 'update' } elseif ($Action -eq 'uninstall') { 'uninstall' } else { 'install' }
+$Installed = Test-Installed
 Write-Host ""
-Write-Host " ATLAS is installed." -ForegroundColor Green
-Write-Host "  Open it from the Desktop icon or Start Menu > ATLAS. It opens as its own window (Edge app mode)."
-Write-Host "  First launch: Windows/Edge will ask for Microphone and Camera access - click Allow."
-Write-Host "  Uninstall:  run this installer again and choose 2  (or  ATLAS-Setup.bat uninstall)."
-if (Ask 'Launch ATLAS now?' $true) { Start-Process -FilePath $PsExe -ArgumentList (Get-AtlasLaunchArgs 'Launch') -WindowStyle Hidden }
-Finish 0
+Write-Host "  ATLAS  -  personal command interface for Hermes Agent  (Windows installer)" -ForegroundColor Cyan
+
+$answer = $null
+$gui = (-not $Yes)
+if ($gui) {
+    $UiRoot = Join-Path $env:TEMP ('atlas-setup-' + [guid]::NewGuid().ToString('N'))
+    $Stage = Join-Path $UiRoot 'payload'
+    Extract-Payload $Stage
+    $uiPage = Join-Path $Stage 'installer\ui.html'
+    $AtlasVersion = ([regex]::Match((Get-Content (Join-Path $Stage 'bridge\atlas_meta.py') -Raw), 'VERSION\s*=\s*"([^"]+)"')).Groups[1].Value
+    $script:UiDir = Join-Path $UiRoot 'ui'; New-Item -ItemType Directory -Force -Path $script:UiDir | Out-Null
+    Copy-Item $uiPage (Join-Path $script:UiDir 'ui.html') -Force
+    $tok = -join ((48..57) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ })
+    $port = Start-UiServer $script:UiDir $tok
+    if (-not $port) { Write-Host '  (the installer window could not start; using the saved or default choices)'; $script:UiDir = ''; $gui = $false }
+    else {
+        $script:UiState.version = $AtlasVersion; $script:UiState.installed = $Installed; $script:UiState.installed_version = (Get-InstalledVersion)
+        $script:UiState.phase = 'starting'; Ui-Flush
+        $url = "http://127.0.0.1:$port/?t=$tok"
+        if (-not (Open-UiWindow $url (Join-Path $UiRoot 'profile'))) { Write-Host "  Open this address in your browser to continue: $url" }
+        else { Write-Host "  The ATLAS Setup window is open. (If you do not see it, open $url )" }
+    }
+}
+if ($gui) {
+    # welcome (already installed) -> options -> run
+    $phase = if ($Installed -and $Action -ne 'uninstall') { 'welcome' } else { 'options' }
+    if ($Installed -and $Action -ne 'uninstall') { $Mode = 'update' }
+    $script:UiState.mode = $Mode
+    while ($true) {
+        if ($phase -eq 'welcome') {
+            $script:UiState.phase = 'welcome'; Ui-Flush
+            $answer = Wait-Answer
+            if (-not $answer -or $answer.action -eq 'cancel') { $script:UiState.phase = 'bye'; $script:UiState.status = 'Setup closed - nothing was changed.'; Ui-Flush; Start-Sleep -Milliseconds 900; Exit-Setup 0 }
+            if ($answer.action -eq 'choose') { $Mode = $(if ($answer.mode -eq 'uninstall') { 'uninstall' } else { 'update' }); $phase = 'options' }
+            continue
+        }
+        $defs = Get-OptionDefs $Mode
+        $script:UiState.mode = $Mode; $script:UiState.options = @($defs | ForEach-Object { $d = $_; [ordered]@{ id = $d.id; group = $d.group; label = $d.label; desc = $d.desc; size = $d.size; value = [bool]$d.value; disabled = [bool]$d.disabled } })
+        $script:UiState.can_back = ($Installed -and $Action -ne 'uninstall')
+        $script:UiState.blurb = $(if ($Mode -eq 'uninstall') { 'Nothing is deleted until you press Uninstall.' } elseif ($Mode -eq 'update') { 'Your earlier choices are filled in. Nothing is downloaded that you leave unticked.' } else { 'Everything here is optional except what is marked required. Sizes are approximate downloads.' })
+        $script:UiState.phase = 'options'; Ui-Flush
+        $answer = Wait-Answer
+        if (-not $answer -or $answer.action -eq 'cancel') { $script:UiState.phase = 'bye'; $script:UiState.status = 'Setup closed - nothing was changed.'; Ui-Flush; Start-Sleep -Milliseconds 900; Exit-Setup 0 }
+        if ($answer.action -eq 'back') { $phase = 'welcome'; continue }
+        if ($answer.action -eq 'start') { $opts = Get-OptionValues $defs $answer.options; break }
+    }
+} else {
+    $defs = Get-OptionDefs $Mode
+    $opts = if ($Update) { Get-UpdateOptions $defs } else { Get-OptionValues $defs $null }
+}
+$script:UiState.mode = $Mode
+$script:UiState.phase = 'running'
+$code = 0
+try {
+    if ($Mode -eq 'uninstall') { Run-Uninstall $opts } else { Run-Install $opts $Mode }
+} catch {
+    $code = 1
+    $why = if ($script:Failed) { $script:Failed } else { "Unexpected problem: $($_.Exception.Message)" }
+    if ($gui) { Ui-Done $false 'Setup could not finish' $why } else { Err $why }
+}
+if ($gui) {
+    $a = Wait-Answer 900
+    if ($a -and $a.action -eq 'finish' -and $a.open -and $code -eq 0) { Start-Process -FilePath $PsExe -ArgumentList (Get-AtlasLaunchArgs 'Launch') -WindowStyle Hidden }
+    Start-Sleep -Milliseconds 600
+}
+Exit-Setup $code

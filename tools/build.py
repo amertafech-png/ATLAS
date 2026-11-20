@@ -13,14 +13,29 @@ FILES = {  # archive path -> source path
     'bridge/bridge.py': 'bridge/bridge.py', 'bridge/config.json': 'bridge/config.json',
     'bridge/requirements.txt': 'bridge/requirements.txt',
     'bridge/atlas_meta.py': 'bridge/atlas_meta.py', 'bridge/atlas_update.py': 'bridge/atlas_update.py',
-    'bridge/atlas_features.py': 'bridge/atlas_features.py', 'bridge/atlas_hermes.py': 'bridge/atlas_hermes.py', 'bridge/modules/_example.py': 'bridge/modules/_example.py',
+    'bridge/atlas_features.py': 'bridge/atlas_features.py', 'bridge/atlas_settings.py': 'bridge/atlas_settings.py', 'bridge/atlas_hermes.py': 'bridge/atlas_hermes.py', 'bridge/modules/_example.py': 'bridge/modules/_example.py',
     'bridge/modules/wake_word.py': 'bridge/modules/wake_word.py', 'bridge/modules/wake_word.js': 'bridge/modules/wake_word.js',
     'win/ATLAS.ps1': 'src/win/ATLAS.ps1', 
-    'mac/atlas-launch.sh': 'src/mac/atlas-launch.sh',
+    'mac/atlas-launch.sh': 'src/mac/atlas-launch.sh', 'mac/ui-server.pl': 'src/mac/ui-server.pl',
+    'installer/ui.html': 'src/installer/ui.html',
     'GUIDE.md': 'docs/GUIDE.md', 'LICENSE': 'LICENSE',
 }
 _missing = [f for f in sorted(os.listdir(os.path.join(ROOT, 'bridge'))) if f.endswith('.py') and f'bridge/{f}' not in FILES]
 if _missing: sys.exit('build: bridge modules not listed in FILES (they would be missing from the installers): ' + ', '.join(_missing))
+# The Windows shortcut icon is assets/atlas.ico: it must be a valid multi-size .ico (16/24/32/48/64/256), or shortcuts show a blank page.
+sys.path.insert(0, os.path.join(ROOT, 'tools'))
+import icolib
+_ok, _msg = icolib.check_ico(os.path.join(ROOT, 'assets', 'atlas.ico'))
+if not _ok: sys.exit('build: assets/atlas.ico is not a valid multi-size icon: ' + _msg + '  (run tools/make_icons.py)')
+print('icon check: atlas.ico', _msg)
+# No console prompts in either installer: every question lives on the Options page of the installer window.
+import re as _re
+for _f, _pat in (('win/installer-body.ps1', r'Read-Host|ReadKey|\bPause\b|RawUI\.ReadKey|\[Console\]::Read'), ('mac/installer-head.sh', r'(^|[;&|{(]\s*)read\s+(-[a-z]+\s+)*[A-Za-z_]+\s*(2>|<\s*/dev/tty|$)')):
+    for _n, _l in enumerate(open(os.path.join(SRC, _f), encoding='utf-8').read().splitlines(), 1):
+        if _re.search(_pat, _l) and 'IFS= read -r' not in _l and 'IFS=' not in _l and 'prompt-ok' not in _l:
+            sys.exit(f'build: console prompt in src/{_f}:{_n}: {_l.strip()[:90]} (put the question on the Options page instead)')
+_body = open(os.path.join(SRC, 'win', 'installer-body.ps1'), encoding='utf-8').read()
+if re.search(r"atlas\.ico'\)?\s*\+\s*','", _body): sys.exit("build: the shortcut icon path must not have ',0' appended (use the icon index argument)")
 def data(arc, src):
     b = open(os.path.join(ROOT, src), 'rb').read()
     if arc.startswith('win/'):
