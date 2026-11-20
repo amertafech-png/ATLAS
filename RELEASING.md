@@ -49,7 +49,7 @@ Example for version `1.2.0` (always `MAJOR.MINOR.PATCH`, tag = `v` + version).
    * `MODI-Setup.command` (macOS installer + updater)
    * `SHA256SUMS` (checksums MODI's updater checks - **required**)
    * `RELEASE-NOTES-v1.2.0.md` (a template to paste into the release page - not an asset)
-3. **Write the notes:** open `dist/RELEASE-NOTES-v1.2.0.md` and replace "(write the highlights here)". Leave the checksum block in.
+3. **Write the notes:** the "What's new" bullets come from `docs/RELEASE-HIGHLIGHTS.md` (edit it *before* step 2 for each release; without that file the template says "(write the highlights here)"). Check `dist/RELEASE-NOTES-v1.2.0.md`, and leave the checksum block in.
 4. **Tag it and push the tag:**
    ```
    git tag v1.2.0

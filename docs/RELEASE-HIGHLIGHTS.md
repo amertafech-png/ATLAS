@@ -1,0 +1,3 @@
+- **Wake word (new, optional, off by default):** say "Hey MODI" - or "Hey <whatever you named your assistant>" - and MODI starts listening, hands-free. It runs fully on your computer (Vosk speech model, ~41 MB downloaded once when you switch it on; no account, no key). The microphone is only open while it is armed, there is a visible indicator, and a mute button. Turn it on in Settings -> Features.
+- Rename your assistant any time in Settings -> Profile (the wake phrase follows the new name).
+- Settings tabs, sports-by-team profile and the in-app updater from v1.1.0 are unchanged.

@@ -343,6 +343,23 @@ body:has(.ov.open) .caption{opacity:0}
 .tags{display:flex;flex-wrap:wrap;gap:.3vw;align-items:center;border:1px solid var(--faint);padding:.2vh .3vw;background:rgba(2,12,26,.7)}
 .tags input{flex:1;min-width:8vw;border:0!important;background:transparent!important;padding:.2vh .3vw!important}
 .tg{cursor:pointer;padding:0 .4vw;border:1px solid var(--c);color:var(--c);font-family:var(--mono);font-size:clamp(9px,.66vw,12px)}
+
+.tag.warn{border-color:rgba(255,179,71,.55);color:var(--warn)}
+.tag.mutedw{border-color:rgba(255,255,255,.3);color:rgba(230,251,255,.6)}
+.tag.armed{position:relative;padding-left:1.1em}
+.tag.armed::before{content:"";position:absolute;left:.45em;top:50%;width:.45em;height:.45em;margin-top:-.22em;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok);animation:armpulse 2.2s ease-in-out infinite}
+@keyframes armpulse{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+.orbwrap::after{content:"";position:absolute;left:50%;top:50%;width:60%;aspect-ratio:1/1;margin:-30% 0 0 -30%;border-radius:50%;border:2px solid var(--c);opacity:0;pointer-events:none}
+body[data-orb=listening] .orbwrap::after{animation:listenring 1.5s ease-out infinite}
+body.wake-flash .orbwrap::after{animation:listenring .7s ease-out 2;border-color:var(--c3)}
+body.wake-flash #orb{filter:drop-shadow(0 0 26px var(--c)) brightness(1.2)}
+@keyframes listenring{0%{opacity:.85;transform:scale(.75)}100%{opacity:0;transform:scale(1.45)}}
+.featx{margin:-.3vh 0 .8vh;padding:.6vh .8vw;border-left:2px solid var(--dim);background:rgba(2,12,26,.45)}
+.wk{display:flex;flex-direction:column;gap:.6vh;font-family:var(--mono);font-size:clamp(10px,.74vw,14px)}
+.wkrow{display:flex;gap:.7vw;align-items:center;flex-wrap:wrap}
+.wkrow input{flex:1;min-width:10vw;background:rgba(2,12,26,.7);border:1px solid var(--faint);color:#e6fbff;padding:.35vh .6vw;font-family:var(--mono)}
+.wkphrase{color:var(--c);letter-spacing:.1em}.wkon{color:var(--ok)}
+.wkbar{flex:1;height:6px;border:1px solid var(--faint);min-width:12vw}.wkbar i{display:block;height:100%;background:var(--c);transition:width .3s}
 </style>
 </head>
 <body>
@@ -410,7 +427,7 @@ body:has(.ov.open) .caption{opacity:0}
       <button class="rb big" id="mic2" aria-label="Microphone – toggle listening" title="Mic – toggle listening (Space)"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
       <button class="rb sel" id="spk" aria-label="Spoken replies on/off" title="Spoken replies on/off"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg></button>
     </div>
-    <div class="mode">Mode: <b>Push-to-talk · Space</b><span class="tag live" id="ptt">Checking</span><span class="tag">Wake word · not connected yet</span></div>
+    <div class="mode">Mode: <b>Push-to-talk · Space</b><span class="tag live" id="ptt">Checking</span><span class="tag" id="wakechip" role="button" tabindex="0" style="cursor:pointer" title="Turn the wake word on in Settings → Features">Wake word · off</span></div>
   </section>
 
   <!-- RIGHT -->
@@ -869,7 +886,7 @@ const post=(p,o)=>api(p,{method:'POST',headers:{'Content-Type':'application/json
 const STATES={idle:['Standing by','All systems nominal'],listening:['Listening…','Voice channel open'],transcribing:['Transcribing…','Processing speech'],
   thinking:['Thinking…',()=>an()+' is working'],speaking:['Speaking…',()=>an()+' is speaking']};
 function setOrb(m){
-  orbMode=m;
+  orbMode=m;document.body.dataset.orb=m;if(window.MODI&&MODI.dispatch)MODI.dispatch({type:'orb',mode:m});
   let [a,b]=STATES[m];if(typeof b==='function')b=b();
   if(m==='idle'&&!BR.online){a='Bridge offline';b='Launch MODI to connect'}
   stateEl.textContent=a;document.getElementById('greetsub').textContent=b;
@@ -957,14 +974,14 @@ async function voiceStart(){
   try{REC.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}
   catch(e){setCaption('MIC','Microphone blocked — allow it in the browser address bar.',true);log('Microphone blocked');return}
   const mime=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'].find(m=>MediaRecorder.isTypeSupported(m))||'';
-  REC.chunks=[];REC.speech=false;REC.cancel=false;REC.silentSince=0;REC.t0=Date.now();
+  REC.chunks=[];REC.speech=false;REC.cancel=false;REC.silentSince=0;REC.t0=Date.now();REC.wake=!!REC.nextWake;REC.nextWake=false;
   REC.rec=new MediaRecorder(REC.stream,mime?{mimeType:mime}:undefined);
   REC.rec.ondataavailable=e=>{if(e.data&&e.data.size)REC.chunks.push(e.data)};
   REC.rec.onstop=onRecStop;
-  const ctx=audioCtx();const src=ctx.createMediaStreamSource(REC.stream);const an=ctx.createAnalyser();an.fftSize=1024;src.connect(an);REC.src=src;
-  const buf=new Uint8Array(an.fftSize);
+  const ctx=audioCtx();const src=ctx.createMediaStreamSource(REC.stream);const ana=ctx.createAnalyser();ana.fftSize=1024;src.connect(ana);REC.src=src;
+  const buf=new Uint8Array(ana.fftSize);
   REC.timer=setInterval(()=>{
-    an.getByteTimeDomainData(buf);let sum=0;for(let i=0;i<buf.length;i++){const v=(buf[i]-128)/128;sum+=v*v}
+    ana.getByteTimeDomainData(buf);let sum=0;for(let i=0;i<buf.length;i++){const v=(buf[i]-128)/128;sum+=v*v}
     const rms=Math.sqrt(sum/buf.length);lvl=Math.min(1,rms*6);
     const now=Date.now();
     if(rms>0.02){REC.speech=true;REC.silentSince=0}else if(REC.speech&&!REC.silentSince)REC.silentSince=now;
@@ -974,6 +991,13 @@ async function voiceStart(){
   },50);
   REC.rec.start(250);
   setOrb('listening');setCaption('YOU','Listening…');cap.classList.add('dimmed');log('Listening (mic open)');
+}
+function stripWake(t){
+  const nm=an().toLowerCase().replace(/[^a-z0-9' ]+/g,' ').replace(/\s+/g,' ').trim(),k=nm?nm.split(' ').length:0;
+  const words=t.replace(/[^A-Za-z0-9' ]+/g,' ').replace(/\s+/g,' ').trim().split(' '),lw=words.map(w=>w.toLowerCase());
+  let i=0;
+  if(['hey','hay','he'].includes(lw[0])&&lw.slice(1,1+k).join(' ')===nm)i=1+k;else if(k&&lw.slice(0,k).join(' ')===nm)i=k;
+  return i?words.slice(i).join(' '):t;
 }
 function voiceStop(){if(REC.rec&&REC.rec.state!=='inactive')REC.rec.stop()}
 function voiceCancel(){REC.cancel=true;voiceStop();log('Listening cancelled')}
@@ -995,6 +1019,10 @@ async function onRecStop(){
     const t=(j.transcript||'').trim();
     log('Heard ('+j.device+', '+j.ms+' ms)');
     if(!t){setOrb('idle');setCaption(an(),"I didn't catch that — try again.");cap.classList.add('dimmed');return}
+    if(REC.wake){                     /* started by the wake word: drop the phrase itself if it leaked into the recording */
+      REC.wake=false;const rest=stripWake(t);
+      if(!rest){log('Only the wake phrase was heard · listening again');setOrb('idle');MODI.listen();return}
+      t=rest}
     await askHermes(t,{speak:true});
   }catch(e){setOrb('idle');setCaption('ERROR',e.message,true);log('Speech-to-text error · '+e.message.slice(0,60))}
 }
@@ -1122,6 +1150,10 @@ const MODI={
   on(type,fn){(MODI_EVT[type]=MODI_EVT[type]||[]).push(fn)},
   dispatch(msg){(MODI_EVT[msg.type]||[]).forEach(f=>{try{f(msg)}catch(e){console.error(e)}})},
   speak:(t)=>speak(t),ask:(t,o)=>askHermes(t,o),log:(m)=>log(m),post,api,setOrb,
+  orb:()=>orbMode,
+  listen(o){if(orbMode==='speaking')stopSpeaking();if(orbMode==='idle'||orbMode==='speaking'){REC.nextWake=!!(o&&o.wake);return voiceStart()}},
+  openSettings(tab){if(tab)setTab=tab;if(ovMode==='settings')renderSettings(true);else openMod('settings')},
+  settingsChanged(id){if(ovMode==='settings'&&setTab==='features')paintFeatx(id)},
   register(id,def){PANELS[id]=def;ICOLAB[id]=def.title||id;
     if(def.dock!==false&&!document.querySelector('.dk[data-m="'+id+'"]')){
       const b=document.createElement('button');b.className='dk';b.dataset.m=id;b.setAttribute('aria-label',def.title||id);
@@ -1243,15 +1275,22 @@ function renderProfileTab(){
     }catch(e){m.className='msg bad';m.textContent=e.message}};
   document.getElementById('pf-save').onclick=()=>pfSave();
 }
+function paintFeatx(id){
+  const el=document.querySelector('[data-featx="'+id+'"]');
+  if(el&&PANELS[id]&&PANELS[id].settings&&!(el.contains(document.activeElement)&&document.activeElement.tagName==='INPUT'))PANELS[id].settings(el);
+}
 function renderFeaturesTab(){
-  const rows=FEATS.map(f=>{const [lab,cls]=FSTAT[f.status]||[f.status,''];
+  const rows=FEATS.slice().sort((a,b)=>(b.installed-a.installed)||(b.enabled-a.enabled)).map(f=>{const [lab,cls]=FSTAT[f.status]||[f.status,''];
     const dis=!f.installed;
-    return `<div class="feat"><div class="ft"><b>${esc(f.title)}</b><span>${esc(f.description)}${f.error?' · '+esc(f.error):''}${f.missing&&f.missing.length&&f.enabled?' · missing: '+esc(f.missing.join(', ')):''}</span></div>
+    return `<div class="feat"><div class="ft"><b>${esc(f.title)}</b><span>${esc(f.description).replace(/&lt;name&gt;/g,esc(an()))}${f.error?' · '+esc(f.error):''}${f.missing&&f.missing.length&&f.enabled?' · missing: '+esc(f.missing.join(', ')):''}</span></div>
       <span class="st ${cls}">${lab}</span>${f.status==='needs_install'?`<button class="btn" data-inst="${f.id}">Install</button>`:''}
-      <button class="sw ${f.enabled?'on':''}" data-feat="${f.id}" ${dis?'disabled':''} aria-label="Toggle ${esc(f.title)}" title="${dis?'Not installed in this version':'Toggle'}"></button></div>`}).join('');
+      <button class="sw ${f.enabled?'on':''}" data-feat="${f.id}" ${dis?'disabled':''} aria-label="Toggle ${esc(f.title)}" title="${dis?'Not installed in this version':'Toggle'}"></button></div>${f.enabled&&f.status==='running'&&f.ui?`<div class="featx" data-featx="${f.id}"></div>`:''}`}).join('');
   document.getElementById('settab').innerHTML='<div class="featlist" id="featlist">'+(rows||'<div class="ph">No features</div>')+'</div>';
   const ovb2=document.getElementById('settab');
+  FEATS.forEach(f=>paintFeatx(f.id));
   ovb2.querySelectorAll('[data-feat]').forEach(b=>b.onclick=async()=>{
+    const f=FEATS.find(x=>x.id===b.dataset.feat);
+    if(f&&f.consent&&!b.classList.contains('on')&&!confirm(f.consent.replace(/<name>/g,an())))return;     /* explicit OK before anything that opens the mic */
     try{const j=await post('/api/features/'+b.dataset.feat,{enabled:!b.classList.contains('on')});FEATS=j.features;renderSettings();loadFeatureUi()}catch(e){log('Feature toggle failed · '+e.message)}});
   ovb2.querySelectorAll('[data-inst]').forEach(b=>b.onclick=async()=>{b.textContent='Installing…';b.disabled=true;
     try{const j=await post('/api/features/'+b.dataset.inst,{action:'install'});FEATS=j.features}catch(e){log('Install failed · '+e.message)}renderSettings();loadFeatureUi()});

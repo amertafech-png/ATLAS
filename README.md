@@ -46,17 +46,18 @@ You can verify a download against the `SHA256SUMS` file attached to the release 
 * **Show it things:** the camera panel sends one frame to Hermes only when you press **Look**.
 * **Live system tiles**, a chat history shared with your voice conversations, a focus timer and notes.
 * **Updates itself** (with your click): an *Update* button appears when a new release is published; downloads are checked against a SHA-256 before running.
-* **Feature switches** (Settings): wake word "Hey MODI", daily brief, reminders, computer control, hand gestures and phone access are planned as optional modules.
+* **Wake word (optional, off by default):** turn it on in Settings -> Features and just say **"Hey MODI"** (or "Hey <the name you gave it>") - fully offline, no account or key. See [GUIDE](docs/GUIDE.md#wake-word).
+* **More feature switches** (Settings): daily brief, reminders, computer control, hand gestures and phone access are planned as optional modules.
 
 * **Made for you:** name your assistant (it ships as MODI; rename it to anything, 1-20 characters), and tell it your name, city, favorite sports and teams (installer or Settings). Weather and the globe follow your city (free Open-Meteo, no key). The Sports tile groups your teams by sport and can ask Hermes for the latest result on demand - there is no live score feed yet, and MODI never invents scores.
 
-Known limits today: no live scores feed; wake word and the other modules above are not built yet.
+Known limits today: no live scores feed; the wake word needs a reasonably quiet room and works best with distinctive names; the other modules above are not built yet.
 
 ## Privacy
 * MODI runs on your computer. The HUD and bridge listen on `127.0.0.1` only and refuse requests from other websites.
 * **No data is sent to the MODI author or any MODI server. There is no telemetry, no account and no analytics.**
-* Your voice is transcribed on your machine. Text you say or type goes to **Hermes Agent on your computer**, which sends it to **the AI provider you chose** (same as using Hermes in a terminal).
-* Network connections MODI itself makes: GitHub (`api.github.com`, to check for updates - disable under Settings -> Updates), Hugging Face (one-time speech model download),
+* Your voice is transcribed on your machine. With the wake word on, your microphone stays open while MODI's window is open; that audio is analysed on your computer only, never saved or sent anywhere, and you can mute it with one click. Text you say or type goes to **Hermes Agent on your computer**, which sends it to **the AI provider you chose** (same as using Hermes in a terminal).
+* Network connections MODI itself makes: GitHub (`api.github.com`, to check for updates - disable under Settings -> Updates), Hugging Face (one-time speech model download), alphacephei.com (one-time ~41 MB wake-word model, only if you switch the wake word on),
   and open-meteo.com (city lookup and weather for the city you entered). Webcam frames are only sent when you press Look.
 * Conversation history is stored locally in MODI's data folder (`%LOCALAPPDATA%\MODI` or `~/Library/Application Support/MODI`). Uninstalling can delete it.
 * Hermes' local API key is generated on your machine during install and is never printed or uploaded.

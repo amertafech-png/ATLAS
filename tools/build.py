@@ -14,6 +14,7 @@ FILES = {  # archive path -> source path
     'bridge/requirements.txt': 'bridge/requirements.txt',
     'bridge/modi_meta.py': 'bridge/modi_meta.py', 'bridge/modi_update.py': 'bridge/modi_update.py',
     'bridge/modi_features.py': 'bridge/modi_features.py', 'bridge/modules/_example.py': 'bridge/modules/_example.py',
+    'bridge/modules/wake_word.py': 'bridge/modules/wake_word.py', 'bridge/modules/wake_word.js': 'bridge/modules/wake_word.js',
     'win/MODI.ps1': 'src/win/MODI.ps1', 'win/MODI.vbs': 'src/win/MODI.vbs',
     'mac/modi-launch.sh': 'src/mac/modi-launch.sh',
     'GUIDE.md': 'docs/GUIDE.md', 'LICENSE': 'LICENSE',
@@ -72,10 +73,12 @@ for a in ASSETS:
     sums += f'{h}  {a}\n'
 open(os.path.join(DIST, modi_meta.CHECKSUMS_ASSET), 'w', newline='\n').write(sums)
 V, R = modi_meta.VERSION, modi_meta.REPO
+_hl = os.path.join(ROOT, 'docs', 'RELEASE-HIGHLIGHTS.md')   # optional: the "What's new" bullets for this version
+highlights = open(_hl, encoding='utf-8').read().strip() if os.path.exists(_hl) else '- (write the highlights here)'
 notes = f"""## MODI v{V}
 
 ### What's new
-- (write the highlights here)
+{highlights}
 
 ### Install
 - **Windows 10/11:** download `MODI-Setup.bat` and double-click it. If SmartScreen says "Windows protected your PC": **More info -> Run anyway**.
