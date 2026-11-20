@@ -991,7 +991,7 @@ async function askHermes(text,opt){
     if(opt.speak!==false&&speakOn)await speak(r.reply);else setOrb('idle');
   }catch(e){
     addMsg('assistant',e.message,{error:true});setCaption('ERROR',e.message,true);log('Hermes error · '+e.message.slice(0,60));setOrb('idle');
-    if(e.fix==='setup')openSetup();
+    if(e.fix==='setup')openSetup();else if(e.fix==='model')openSetup({ai:true});
   }
 }
 
@@ -1427,9 +1427,11 @@ function suProviderForm(){
   if(id==='ollama'){
     const o=st.ollama||{running:false,installed:false,models:[]};
     if(!o.installed)return '<p>Ollama runs AI models on this computer, free and offline. Install it first, then come back here.</p><div class="row"><a class="btn sel" href="https://ollama.com/download" target="_blank" rel="noopener">Get Ollama</a><button class="btn" data-su="refresh">I installed it</button></div>';
-    const opts=o.models.map(m=>'<option>'+esc(m)+'</option>').join('');
-    return (o.models.length?'<p>Models already on this computer:</p><div class="row"><select id="sumodelsel">'+opts+'</select><button class="btn sel" data-su="connect">Use this model</button></div>':'<p>No models downloaded yet.</p>')+
-      '<p class="sub" style="margin-top:1.4vh">Or download one (a few GB; needs a decent computer). Small models are fine for chat but weaker at tasks:</p><div class="row"><input type="text" id="supull" value="qwen2.5:7b" autocomplete="off" spellcheck="false"><button class="btn" data-su="pull">Download &amp; use</button></div>';
+    const weak=o.weak||[],rec=o.recommended||['qwen2.5:7b','qwen3:8b','llama3.1:8b'];
+    const ms=o.models.slice().sort((a,b)=>(weak.includes(a)?1:0)-(weak.includes(b)?1:0));
+    const opts=ms.map(m=>'<option value="'+esc(m)+'">'+esc(m)+(weak.includes(m)?'  (weak with tools)':'')+'</option>').join('');
+    return (o.models.length?'<p>Models already on this computer:</p><div class="row"><select id="sumodelsel">'+opts+'</select><button class="btn sel" data-su="connect">Use this model</button></div><div class="sub" id="suweak" style="color:var(--warn);display:'+(weak.includes(ms[0])?'block':'none')+'">This model is small and weak with tools: replies may come out as garbled tool-call text. A model from the list below works much better.</div>':'<p>No models downloaded yet.</p>')+
+      '<p class="sub" style="margin-top:1.4vh">Recommended (they handle Hermes\' tools well; a few GB, needs a decent computer): <b>Qwen 2.5 7B</b>, <b>Qwen 3 8B</b>, <b>Llama 3.1 8B</b>. Tiny models (hermes3, llama3.2, 1-3B) chat fine but fail at tools.</p><div class="row">'+rec.map(m=>'<button class="btn" data-recmodel="'+esc(m)+'">'+esc(m)+'</button>').join('')+'</div><div class="row"><input type="text" id="supull" value="qwen2.5:7b" autocomplete="off" spellcheck="false"><button class="btn" data-su="pull">Download &amp; use</button></div>';
   }
   return '';
 }
@@ -1456,9 +1458,11 @@ function renderSetup(){
     if(jb&&jb.result&&jb.result.warning)h+='<div class="sub">'+esc(jb.result.warning)+'</div>';
     if(SU.test)h+=SU.test.ok?'<div class="okmsg">Test reply: “'+esc(SU.test.reply||'(empty)')+'”</div>':'<div class="err">'+esc(SU.test.error||'No answer')+'</div>';
     else if(jb&&jb.result&&jb.result.test&&jb.result.test.ok)h+='<div class="okmsg">Test message worked: “'+esc(jb.result.test.reply||'(empty)')+'”</div>';
-    h+='<div class="row"><button class="btn sel" data-su="done">Start talking to '+A+'</button><button class="btn" data-su="test"'+(SU.testing?' disabled':'')+'>'+(SU.testing?'Testing…':'Send a test message')+'</button><button class="btn" data-su="change">Change AI</button></div>';
+    h+='<div class="row"><button class="btn sel" data-su="done">Start talking to '+A+'</button><button class="btn" data-su="test"'+(SU.testing?' disabled':'')+'>'+(SU.testing?'Testing…':'Test my AI')+'</button><button class="btn" data-su="change">Change AI</button></div>';
   }
   box.innerHTML=h;
+  box.querySelectorAll('[data-recmodel]').forEach(b=>b.onclick=()=>{const i=document.getElementById('supull');if(i)i.value=b.dataset.recmodel});
+  const wsel=document.getElementById('sumodelsel');if(wsel)wsel.onchange=()=>{const w=document.getElementById('suweak');if(w){const o=(SU.st&&SU.st.ollama)||{};w.style.display=(o.weak||[]).includes(wsel.value.replace(/\s+\(weak with tools\)$/,''))?'block':'none'}};
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>{SU.sel=b.dataset.prov;SU.err='';if(SU.sel==='ollama')suStatus(true).then(renderSetup);renderSetup()});
   box.querySelectorAll('[data-su]').forEach(b=>b.onclick=()=>suAct(b.dataset.su));
 }
@@ -1489,10 +1493,15 @@ async function suAct(a){
 function renderAiTab(){
   const st=(BR.health&&BR.health.setup)||{},ok=st.state==='ready';
   document.getElementById('settab').innerHTML='<div class="prof"><label>Hermes</label><div class="prow"><span class="msg">'+(ok?'Connected to '+esc(st.provider||'your AI')+(st.model?' · '+esc(st.model):''):st.state==='needs_ai'?'Hermes is running, but no AI is signed in yet.':st.state==='needs_install'?'Hermes is not installed yet.':'Hermes is not connected yet.')+'</span></div>'+
-    '<label>AI</label><div class="prow"><button class="btn sel" id="aisetup">'+(ok?'Change AI':'Connect now')+'</button><button class="btn" id="aifix">Re-check Hermes</button></div>'+
+    '<label>AI</label><div class="prow"><button class="btn sel" id="aisetup">'+(ok?'Change AI':'Connect now')+'</button><button class="btn" id="aifix">Re-check Hermes</button><button class="btn" id="aitest">Test my AI</button></div><div class="prow"><span class="msg" id="aitestmsg"></span></div>'+
     '<div class="prow"><span class="msg">Sign-ins and API keys are stored by Hermes on this computer only; '+esc(an())+' never shows or uploads them.</span></div></div>';
   document.getElementById('aisetup').onclick=()=>openSetup({ai:true});
   document.getElementById('aifix').onclick=()=>openSetup();
+  const tb=document.getElementById('aitest');
+  if(tb)tb.onclick=async()=>{const m=document.getElementById('aitestmsg');tb.disabled=true;m.className='msg';m.textContent='Asking your AI a simple question…';
+    try{const j=await post('/api/setup/test',{});const r=j.result||{};
+      if(r.ok){m.textContent='Works: “'+(r.reply||'(empty)')+'”'+(r.warning?' — '+r.warning:'')}else{m.className='msg bad';m.textContent=r.error||'No answer'}
+    }catch(e){m.className='msg bad';m.textContent=e.message}tb.disabled=false};
 }
 
 (async()=>{

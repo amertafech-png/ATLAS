@@ -22,6 +22,13 @@ def current_key():
 SESSIONS = {}
 
 
+ECHOED = {}
+
+
+def has_retry_nudge(body):
+    return any(m.get('role') == 'system' and 'Do not call tools' in str(m.get('content')) for m in body.get('messages', []))
+
+
 async def health(_):
     return web.json_response({"status": "ok", "platform": "hermes-agent-mock"})
 
@@ -63,6 +70,12 @@ async def chat(req):
         reply = f"We are on turn {len(turns)} of this session. Your first message was: {turns[0][:60]}"
     else:
         reply = f"Mock Hermes heard: {text[:120]}. This is turn {len(turns)} of session {sid}."
+    mode = __import__("os").environ.get("MOCK_ECHO")          # a weak local model: answers with tool-call text ("always") or only the first time ("once")
+    if mode == "always" or (mode == "once" and not has_retry_nudge(body) and not ECHOED.get(sid)):
+        ECHOED[sid] = True
+        reply = "Here is an example of a function call in the format you requested for your question:\nTool: get_current_time\nArguments: {}"
+    if len(reply) > 0 and "longreply" in low:
+        reply = ("This is a long answer. " * 40).strip()
     await __import__("asyncio").sleep(0.8)
     return web.json_response({
         "id": "chatcmpl-mock", "object": "chat.completion", "created": int(time.time()), "model": "hermes-agent",

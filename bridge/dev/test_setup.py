@@ -85,6 +85,20 @@ check("chat: no provider detected", np["kind"] == "no_provider")
 pa = m.interpret_chat(200, json.dumps({"choices": [{"message": {"content": "x"}, "finish_reason": "error"}], "hermes": {"failed": True, "error": "HTTP 401: Missing Authentication header"}}))
 check("chat: bad provider key detected", pa["kind"] == "provider_auth")
 check("chat: 401 / down", m.interpret_chat(401, b"")["kind"] == "auth" and m.interpret_chat(0, b"")["kind"] == "unreachable")
+# --- weak local models / tool-call echo (v1.2.1)
+adam = "Here is an example of a function call in the format you requested for the current weather:\nTool: get_weather\nArguments: {\"city\": \"Dallas\"}"
+for label, txt in (("Adam's reply", adam), ("<tool_call> tags", "<tool_call>{\"name\": \"web_search\", \"arguments\": {\"q\": \"x\"}}</tool_call>"),
+                   ("bare JSON call", "{\"name\": \"get_time\", \"parameters\": {}}"), ("llama python tag", "<|python_tag|>search(query='x')"), ("[TOOL_CALLS]", "[TOOL_CALLS][{\"name\":\"a\"}]")):
+    check("tool echo detected: " + label, m.looks_like_tool_echo(txt))
+    r = m.interpret_chat(200, json.dumps({"choices": [{"message": {"content": txt}, "finish_reason": "stop"}]}))
+    check("tool echo -> kind tool_echo, friendly message: " + label, r["ok"] is False and r["kind"] == "tool_echo" and "Qwen" in r["error"])
+for good in ("It is 3:45 in the afternoon.", "Sure! In Python, a function call looks like print('hi').", "The weather in Dallas is sunny, 72 degrees.", "I can't call that tool, but here is what I know."):
+    check("normal reply is NOT a tool echo: " + good[:30], not m.looks_like_tool_echo(good))
+long_reply = "word " * 200
+check("long replies are no longer cut at 300 characters", len(m.interpret_chat(200, json.dumps({"choices": [{"message": {"content": long_reply}, "finish_reason": "stop"}]}), limit=None)["reply"]) >= 990)
+check("weak models flagged", all(m.weak_model(x) for x in ("hermes3", "hermes3:8b", "llama3.2:3b", "llama3.2", "tinyllama", "qwen2.5:1.5b", "phi3:mini", "gemma2:2b", "smollm2:1.7b", "hermes3-atlas")))
+check("recommended models not flagged", not any(m.weak_model(x) for x in m.RECOMMENDED_MODELS + ["qwen2.5:14b", "llama3.1:8b-instruct-q4", "mistral:7b", "qwen3:8b-atlas"]))
+check("advice names the model + a better one", "Qwen 2.5 7B" in m.model_advice("hermes3") and m.model_advice("qwen2.5:7b") == "")
 # --- CLI discovery outside PATH
 fake = tmp / "hh" / "bin"; fake.mkdir()
 exe = fake / ("hermes.cmd" if os.name == "nt" else "hermes"); exe.write_text("#!/bin/sh\necho hi\n"); exe.chmod(0o755)

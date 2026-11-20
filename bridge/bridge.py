@@ -377,24 +377,34 @@ async def hermes_api(user_content):
     url = HM.api_url() + "/v1/chat/completions"
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json",
                "X-Hermes-Session-Id": STATE["session_id"]}
-    body = {"model": h["model"], "stream": False,
-            "messages": [{"role": "system", "content": system_prompt()},
-                         {"role": "user", "content": user_content}]}
-    try:
-        async with ClientSession(timeout=ClientTimeout(total=h["timeout_seconds"])) as s:
-            async with s.post(url, json=body, headers=headers) as r:
-                txt = await r.text()
-                code = r.status
-    except asyncio.TimeoutError:
-        raise HermesError("Hermes took too long to answer (timeout).", 504)
-    except ClientError:
-        HM.invalidate()
-        raise HermesError("Can't reach Hermes right now. Press Fix it and I'll start it.", 503, "setup")
-    res = atlas_hermes.interpret_chat(code, txt, key)
+    sysmsg = system_prompt()
+    res = None
+    for attempt in (1, 2):
+        body = {"model": h["model"], "stream": False,
+                "messages": [{"role": "system", "content": sysmsg}, {"role": "user", "content": user_content}]}
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=h["timeout_seconds"])) as s:
+                async with s.post(url, json=body, headers=headers) as r:
+                    txt = await r.text()
+                    code = r.status
+        except asyncio.TimeoutError:
+            raise HermesError("Hermes took too long to answer (timeout).", 504)
+        except ClientError:
+            HM.invalidate()
+            raise HermesError("Can't reach Hermes right now. Press Fix it and I'll start it.", 503, "setup")
+        res = atlas_hermes.interpret_chat(code, txt, key, limit=None)
+        if res.get("kind") != "tool_echo":
+            break
+        if attempt == 1:     # a weak local model answered with tool-call text: ask once more, plainly
+            print("[bridge] the AI answered with tool-call text; retrying once", flush=True)
+            sysmsg += "\nIMPORTANT: answer the user directly in plain spoken sentences. Do not call tools and do not write function calls, JSON or 'Tool:' lines."
     if res["ok"]:
         HM.note_chat_ok()
         return res["reply"] or "(Hermes returned an empty reply.)"
     kind = res.get("kind")
+    if kind == "tool_echo":
+        _lab, _mdl = HM.provider_label()
+        raise HermesError(res["error"].replace("the local model", _mdl) if _mdl else res["error"], 502, "model")
     if kind == "no_provider":
         HM.chat_state = "no_provider"
         raise HermesError("Hermes isn't signed in to an AI yet. Choose ChatGPT, Claude, Grok or a local model.", 503, "setup")
