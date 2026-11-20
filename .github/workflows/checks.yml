@@ -63,6 +63,11 @@ jobs:
             }
           '
 
+      - name: No Windows Script Host
+        run: bash tools/check-no-wsh.sh
+      - name: No leftover old product name  # legacy-modi
+        run: bash tools/check-old-name.sh
+
       - name: Secret pattern
         run: |
           set -euo pipefail

@@ -1,5 +1,5 @@
-"""Template for a MODI feature module.  Copy to <id>.py (id must be one of the catalog ids or any new name).
-Ignored by MODI because the file name starts with an underscore."""
+"""Template for an ATLAS feature module.  Copy to <id>.py (id must be one of the catalog ids or any new name).
+Ignored by ATLAS because the file name starts with an underscore."""
 META = {"title": "Example feature", "description": "What it does, one line.", "requirements": [], "ui": False}
 
 _task = None

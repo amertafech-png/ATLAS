@@ -1,4 +1,4 @@
-"""MODI self-update: checks GitHub Releases, verifies and runs the platform installer in update mode.
+"""ATLAS self-update: checks GitHub Releases, verifies and runs the platform installer in update mode.
 
 Flow:  check()  ->  state["available"]  ->  install():  download asset -> verify SHA-256 against the release's
 SHA256SUMS asset (or checksum lines in the release notes) -> refuse if missing/mismatch -> start the installer with
@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
-import modi_meta
+import atlas_meta
 
 SEMVER = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")   # plain x.y.z only; pre-release tags are ignored
 MAX_INSTALLER_BYTES = 80 * 1024 * 1024
@@ -39,8 +39,8 @@ def is_newer(tag, current):
 
 
 def platform_key():
-    forced = os.getenv("MODI_UPDATE_PLATFORM")
-    if forced in modi_meta.ASSETS:
+    forced = os.getenv("ATLAS_UPDATE_PLATFORM")
+    if forced in atlas_meta.ASSETS:
         return forced
     if sys.platform.startswith("win"):
         return "windows"
@@ -82,15 +82,15 @@ class Updater:
 
     @property
     def repo(self):
-        return os.getenv("MODI_UPDATE_REPO") or self.ucfg.get("repo") or modi_meta.REPO
+        return os.getenv("ATLAS_UPDATE_REPO") or self.ucfg.get("repo") or atlas_meta.REPO
 
     @property
     def api_base(self):
-        return (os.getenv("MODI_UPDATE_API") or self.ucfg.get("api_base") or modi_meta.API_BASE).rstrip("/")
+        return (os.getenv("ATLAS_UPDATE_API") or self.ucfg.get("api_base") or atlas_meta.API_BASE).rstrip("/")
 
     @property
     def official(self):
-        return self.api_base == modi_meta.API_BASE
+        return self.api_base == atlas_meta.API_BASE
 
     def set_enabled(self, on):
         self.ucfg["enabled"] = bool(on)
@@ -138,7 +138,7 @@ class Updater:
     async def _fetch(self, same_repo):
         self._last_net = time.time()
         url = f"{self.api_base}/repos/{self.repo}/releases/latest"
-        headers = {"Accept": "application/vnd.github+json", "User-Agent": f"MODI/{modi_meta.VERSION}",
+        headers = {"Accept": "application/vnd.github+json", "User-Agent": f"ATLAS/{atlas_meta.VERSION}",
                    "X-GitHub-Api-Version": "2022-11-28"}
         if same_repo and self._cache.get("etag"):
             headers["If-None-Match"] = self._cache["etag"]
@@ -179,22 +179,22 @@ class Updater:
     def state(self):
         c = self._cache if self._cache.get("repo") == self.repo else {}
         rel = c.get("release")
-        cur = modi_meta.VERSION
+        cur = atlas_meta.VERSION
         st = {"enabled": self.enabled, "current": cur, "repo": self.repo, "checked_at": c.get("checked_at", 0),
               "available": False, "latest": cur, "tag": "", "notes": "", "url": "", "can_install": False,
               "installing": self.stage, "install_message": self.stage_msg}
         err = c.get("error", "")
         if rel and not rel.get("draft") and not rel.get("prerelease") and is_newer(rel["tag"], cur):
             plat = platform_key()
-            asset = next((a for a in rel["assets"] if plat and a["name"] == modi_meta.ASSETS[plat]), None)
+            asset = next((a for a in rel["assets"] if plat and a["name"] == atlas_meta.ASSETS[plat]), None)
             st.update(available=True, latest=rel["tag"].lstrip("v"), tag=rel["tag"], notes=rel["body"], url=rel["url"],
                       can_install=bool(asset), published=rel.get("published", ""))
             st["status"] = "available"
             st["message"] = f"Update available: v{st['latest']}" + ("" if asset else " (no installer for this system in the release)")
         elif rel:
-            st.update(latest=(rel["tag"] or cur).lstrip("v"), status="up_to_date", message=f"MODI is up to date (v{cur})")
+            st.update(latest=(rel["tag"] or cur).lstrip("v"), status="up_to_date", message=f"ATLAS is up to date (v{cur})")
         elif c.get("no_release"):
-            st.update(status="up_to_date", message=f"MODI is up to date (v{cur}) - no releases published yet")
+            st.update(status="up_to_date", message=f"ATLAS is up to date (v{cur}) - no releases published yet")
         elif err:
             st.update(status="error", message="Couldn't check for updates")
         elif not self.enabled:
@@ -242,7 +242,7 @@ class Updater:
             u = urlparse(url)
             if u.scheme != "https" or not any(u.hostname == h or (u.hostname or "").endswith("." + h) for h in OFFICIAL_HOSTS):
                 raise RuntimeError("Refusing to download from an unexpected address.")
-        async with session.get(url, headers={"User-Agent": f"MODI/{modi_meta.VERSION}"}, allow_redirects=True) as r:
+        async with session.get(url, headers={"User-Agent": f"ATLAS/{atlas_meta.VERSION}"}, allow_redirects=True) as r:
             if r.status != 200:
                 raise RuntimeError(f"Download failed (HTTP {r.status}).")
             if self.official:
@@ -265,11 +265,11 @@ class Updater:
         if not plat:
             raise RuntimeError("Self-update is only available on Windows and macOS.")
         rel = self._cache["release"]
-        name = modi_meta.ASSETS[plat]
+        name = atlas_meta.ASSETS[plat]
         asset = next((a for a in rel["assets"] if a["name"] == name), None)
         if not asset:
             raise RuntimeError(f"The release has no {name} file.")
-        sums_asset = next((a for a in rel["assets"] if a["name"] == modi_meta.CHECKSUMS_ASSET), None)
+        sums_asset = next((a for a in rel["assets"] if a["name"] == atlas_meta.CHECKSUMS_ASSET), None)
         self._set_stage("downloading", f"Downloading {name} ...")
         async with ClientSession(timeout=ClientTimeout(total=900)) as s:
             sums_text = ""
@@ -283,7 +283,7 @@ class Updater:
         actual = hashlib.sha256(data).hexdigest()
         if actual != expected:
             raise RuntimeError("Checksum mismatch - the download was not trusted and has been discarded.")
-        tmp = Path(tempfile.mkdtemp(prefix="modi-update-"))
+        tmp = Path(tempfile.mkdtemp(prefix="atlas-update-"))
         path = tmp / name
         path.write_bytes(data)
         try:
@@ -294,10 +294,10 @@ class Updater:
         self._launch(plat, path)
         try:
             (self.data_dir / "update-last.json").write_text(json.dumps(
-                {"from": modi_meta.VERSION, "to": st["latest"], "at": time.time(), "installer": str(path)}), encoding="utf-8")
+                {"from": atlas_meta.VERSION, "to": st["latest"], "at": time.time(), "installer": str(path)}), encoding="utf-8")
         except OSError:
             pass
-        self._set_stage("restarting", "MODI is restarting ...")
+        self._set_stage("restarting", "ATLAS is restarting ...")
         asyncio.get_running_loop().call_later(2.0, self.request_exit)
         return {"ok": True, "to": st["latest"]}
 
@@ -314,7 +314,7 @@ class Updater:
 
     def cleanup_old(self):
         base = Path(tempfile.gettempdir())
-        for d in base.glob("modi-update-*"):
+        for d in base.glob("atlas-update-*"):
             try:
                 if time.time() - d.stat().st_mtime > 86400 and d.is_dir():
                     for f in d.iterdir():

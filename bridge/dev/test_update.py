@@ -1,9 +1,9 @@
-"""Unit-style tests for modi_update against the mock release server (installer launch is stubbed)."""
+"""Unit-style tests for atlas_update against the mock release server (installer launch is stubbed)."""
 import asyncio, os, subprocess, sys, tempfile, time, json
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import modi_meta, modi_update
-os.environ['MODI_UPDATE_PLATFORM'] = 'mac'
+import atlas_meta, atlas_update
+os.environ['ATLAS_UPDATE_PLATFORM'] = 'mac'
 DIST = str(Path(__file__).resolve().parents[2] / 'dist')
 PORT = 9912
 def start(mode, tag='v1.1.0'):
@@ -12,10 +12,10 @@ def start(mode, tag='v1.1.0'):
 async def case(name, mode, expect_check, expect_install, current='1.0.0', api=None, enabled=True):
     p = start(mode)
     try:
-        modi_meta.VERSION = current
+        atlas_meta.VERSION = current
         d = Path(tempfile.mkdtemp()); launched = []
-        os.environ['MODI_UPDATE_API'] = api or f'http://127.0.0.1:{PORT}'
-        u = modi_update.Updater({'update': {'enabled': enabled}}, d, d / 'config.json', lambda *a, **k: None, lambda: None)
+        os.environ['ATLAS_UPDATE_API'] = api or f'http://127.0.0.1:{PORT}'
+        u = atlas_update.Updater({'update': {'enabled': enabled}}, d, d / 'config.json', lambda *a, **k: None, lambda: None)
         u._launch = lambda plat, path: launched.append(str(path))
         st = await u.check(force=True)
         ok1 = (st['status'] == expect_check)
@@ -47,13 +47,13 @@ async def main():
     # caching + ETag
     p = start('ok')
     try:
-        modi_meta.VERSION = '1.0.0'; os.environ['MODI_UPDATE_API'] = f'http://127.0.0.1:{PORT}'
+        atlas_meta.VERSION = '1.0.0'; os.environ['ATLAS_UPDATE_API'] = f'http://127.0.0.1:{PORT}'
         d = Path(tempfile.mkdtemp())
-        u = modi_update.Updater({'update': {'enabled': True}}, d, d / 'config.json', lambda *a, **k: None, lambda: None)
+        u = atlas_update.Updater({'update': {'enabled': True}}, d, d / 'config.json', lambda *a, **k: None, lambda: None)
         await u.check(); await u.check(); await u.check(startup=True)
         import urllib.request
         h1 = json.load(urllib.request.urlopen(f'http://127.0.0.1:{PORT}/stats'))
-        u2 = modi_update.Updater({'update': {'enabled': True}}, d, d / 'config.json', lambda *a, **k: None, lambda: None)  # "restart" with warm cache
+        u2 = atlas_update.Updater({'update': {'enabled': True}}, d, d / 'config.json', lambda *a, **k: None, lambda: None)  # "restart" with warm cache
         await u2.check(startup=True)
         h2 = json.load(urllib.request.urlopen(f'http://127.0.0.1:{PORT}/stats'))
         # stale cache -> conditional request gets 304
@@ -65,17 +65,17 @@ async def main():
     finally:
         p.terminate(); p.wait()
     # host allow-list on the official API
-    os.environ.pop('MODI_UPDATE_API', None)
+    os.environ.pop('ATLAS_UPDATE_API', None)
     d = Path(tempfile.mkdtemp())
-    u = modi_update.Updater({'update': {}}, d, d / 'config.json', lambda *a, **k: None, lambda: None)
+    u = atlas_update.Updater({'update': {}}, d, d / 'config.json', lambda *a, **k: None, lambda: None)
     class S: pass
     try:
-        await u._http_get(None, 'https://evil.example.com/MODI-Setup.bat', 100); print('FAIL host check')
+        await u._http_get(None, 'https://evil.example.com/ATLAS-Setup.bat', 100); print('FAIL host check')
     except RuntimeError as e:
         print('PASS host allow-list:', e)
     try:
         await u._http_get(None, 'http://github.com/x', 100); print('FAIL scheme check')
     except RuntimeError as e:
         print('PASS https-only:', e)
-    print('semver:', modi_update.is_newer('v1.10.0', '1.9.9'), modi_update.is_newer('v1.1.0', '1.1.0'), modi_update.is_newer('latest', '1.0.0'), modi_update.is_newer('v2.0.0-beta.1', '1.9.0'))
+    print('semver:', atlas_update.is_newer('v1.10.0', '1.9.9'), atlas_update.is_newer('v1.1.0', '1.1.0'), atlas_update.is_newer('latest', '1.0.0'), atlas_update.is_newer('v2.0.0-beta.1', '1.9.0'))
 asyncio.run(main())

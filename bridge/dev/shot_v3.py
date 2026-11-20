@@ -20,7 +20,7 @@ with sync_playwright() as p:
     pg.wait_for_function("document.getElementById('state').textContent.toLowerCase().includes('listen')", timeout=5000)
     pg.wait_for_timeout(1200); pg.screenshot(path='/tmp/s_listen.png')
     pg.wait_for_function("!document.getElementById('state').textContent.toLowerCase().includes('listen')", timeout=15000)
-    pg.wait_for_function("document.getElementById('caption').textContent.includes('MODI')&&document.getElementById('caption').textContent.includes('Mock')", timeout=20000)
+    pg.wait_for_function("document.getElementById('caption').textContent.includes('ATLAS')&&document.getElementById('caption').textContent.includes('Mock')", timeout=20000)
     print('caption:', pg.inner_text('#caption'))
     pg.wait_for_function("document.getElementById('state').textContent.includes('Speaking')", timeout=15000); pg.wait_for_timeout(700); print('state:', pg.inner_text('#state')); pg.screenshot(path='/tmp/s_speaking.png')
     pg.wait_for_function("document.getElementById('state').textContent.includes('Standing')", timeout=20000)

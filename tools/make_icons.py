@@ -1,4 +1,4 @@
-"""Generate MODI icons (png, ico, icns) from one 1024px master. Needs Pillow."""
+"""Generate ATLAS icons (png, ico, icns) from one 1024px master. Needs Pillow."""
 import math, os, sys
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets')
@@ -40,18 +40,18 @@ def master():
     im = Image.alpha_composite(im, blur); im = Image.alpha_composite(im, glow); im = Image.alpha_composite(im, core)
     # border
     ImageDraw.Draw(im).rounded_rectangle((40, 40, S-40, S-40), radius=210, outline=(60, 200, 235, 160), width=8)
-    # M
+    # A
     d = ImageDraw.Draw(im)
     font = None
     for p in ('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'):
         if os.path.exists(p): font = ImageFont.truetype(p, 250); break
     font = font or ImageFont.load_default()
-    d.text((c, c+6), 'M', font=font, fill=(6, 26, 44, 255), anchor='mm')
+    d.text((c, c+6), 'A', font=font, fill=(6, 26, 44, 255), anchor='mm')
     return im
 m = master()
 os.makedirs(OUT, exist_ok=True)
-m.resize((256, 256), Image.LANCZOS).save(os.path.join(OUT, 'modi.png'))
-m.save(os.path.join(OUT, 'modi.ico'), sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
-m.save(os.path.join(OUT, 'modi.icns'), sizes=[(16,16),(32,32),(64,64),(128,128),(256,256),(512,512),(1024,1024)])
-m.save('/tmp/modi-master.png')
+m.resize((256, 256), Image.LANCZOS).save(os.path.join(OUT, 'atlas.png'))
+m.save(os.path.join(OUT, 'atlas.ico'), sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])
+m.save(os.path.join(OUT, 'atlas.icns'), sizes=[(16,16),(32,32),(64,64),(128,128),(256,256),(512,512),(1024,1024)])
+m.save('/tmp/atlas-master.png')
 print('icons written')
