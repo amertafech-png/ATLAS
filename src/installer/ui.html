@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>ATLAS Setup</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--c:#35e0ff;--dim:#7fb4c4;--faint:rgba(53,224,255,.22);--ok:#5dffb0;--warn:#ffc857;--bad:#ff6b7a;--bg:#030d1a;--mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:radial-gradient(1200px 700px at 70% -10%,#0a2a44 0%,var(--bg) 60%);color:#e6fbff;font:15px/1.5 system-ui,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:820px;margin:0 auto;padding:26px 28px 90px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--faint)}
+header .logo{width:46px;height:46px;border-radius:11px;border:1px solid var(--c);display:grid;place-items:center;font:700 26px var(--mono);color:var(--c);box-shadow:0 0 18px rgba(53,224,255,.35);background:rgba(53,224,255,.07)}
+header h1{margin:0;font:600 17px var(--mono);letter-spacing:.24em;color:var(--c)}
+header small{display:block;color:var(--dim);font-size:12px;letter-spacing:.06em}
+h2{font:600 14px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--c);margin:0 0 6px}
+p{margin:0 0 12px}.sub{color:var(--dim);font-size:13px}
+.opts{display:flex;flex-direction:column;gap:10px;margin:14px 0 6px}
+.opt{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--faint);background:rgba(53,224,255,.04);cursor:pointer}
+.opt:hover{border-color:var(--c)}
+.opt.off{opacity:.6;cursor:default}
+.opt input{margin-top:3px;width:18px;height:18px;accent-color:#35e0ff;flex:none}
+.opt b{display:block;font-weight:600}
+.opt span.d{display:block;color:var(--dim);font-size:13px}
+.opt .sz{margin-left:auto;flex:none;font:12px var(--mono);color:var(--c);border:1px solid var(--faint);padding:2px 8px;white-space:nowrap}
+.opt .sz.n{color:var(--dim)}
+.grp{font:12px var(--mono);letter-spacing:.14em;color:var(--dim);text-transform:uppercase;margin:16px 0 -4px}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+button.btn{all:unset;cursor:pointer;padding:9px 22px;border:1px solid var(--faint);font:600 13px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:#cfeff7}
+button.btn:hover{border-color:var(--c);color:#fff}
+button.btn.sel{border-color:var(--c);background:rgba(53,224,255,.16);color:#fff;box-shadow:0 0 14px rgba(53,224,255,.25)}
+button.btn.bad{border-color:var(--bad);color:var(--bad)}
+.steps{margin:14px 0 18px;border:1px solid var(--faint)}
+.st{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid rgba(53,224,255,.1);color:var(--dim)}
+.st:last-child{border-bottom:0}
+.st i{font-style:normal;width:22px;height:22px;border:1px solid var(--faint);border-radius:50%;display:grid;place-items:center;font:600 12px var(--mono);flex:none}
+.st .n{font:12px var(--mono);color:var(--dim);width:18px;flex:none}
+.st.run{color:#fff;background:rgba(53,224,255,.12);box-shadow:inset 3px 0 0 var(--c)}
+.st.run i{border-color:var(--c);color:var(--c);animation:pulse 1.2s infinite}
+.st.ok{color:#d9fff0}.st.ok i{background:var(--ok);border-color:var(--ok);color:#03251a}
+.st.fail{color:var(--bad)}.st.fail i{border-color:var(--bad);color:var(--bad)}
+.st.skip{opacity:.55}
+@keyframes pulse{50%{box-shadow:0 0 12px var(--c)}}
+.status{font-size:15px;margin:6px 0 10px;min-height:24px}
+.bar{height:12px;border:1px solid var(--faint);background:rgba(53,224,255,.05);overflow:hidden;position:relative}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,#1aa6c4,var(--c));box-shadow:0 0 12px var(--c);transition:width .5s}
+.bar.ind i{width:30%!important;position:absolute;animation:slide 1.4s infinite ease-in-out}
+@keyframes slide{0%{left:-30%}100%{left:100%}}
+.pct{font:12px var(--mono);color:var(--dim);margin-top:6px;display:flex;justify-content:space-between}
+details{margin-top:16px}summary{cursor:pointer;color:var(--dim);font:12px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.log{margin-top:8px;max-height:170px;overflow:auto;padding:10px 12px;background:#020a14;border:1px solid var(--faint);font:12px/1.5 var(--mono);color:#9fd6e4;white-space:pre-wrap;word-break:break-word}
+.big{display:grid;place-items:center;width:64px;height:64px;border-radius:50%;margin:6px 0 14px;font:700 34px var(--mono)}
+.big.ok{background:rgba(93,255,176,.12);border:2px solid var(--ok);color:var(--ok)}
+.big.bad{background:rgba(255,107,122,.1);border:2px solid var(--bad);color:var(--bad)}
+.next{border:1px solid var(--faint);padding:12px 16px;margin:14px 0;background:rgba(53,224,255,.05)}
+.next ol{margin:6px 0 0 18px;padding:0;color:#cfeff7}
+.err{color:var(--bad);margin:10px 0;white-space:pre-wrap}
+footer{position:fixed;left:0;right:0;bottom:0;padding:8px 18px;font:11px var(--mono);color:var(--dim);background:rgba(2,10,20,.9);border-top:1px solid var(--faint);letter-spacing:.06em}
+</style></head><body>
+<div class="wrap"><header><div class="logo">A</div><div><h1>ATLAS SETUP</h1><small id="sub">Personal command interface for Hermes Agent</small></div></header><div id="app"><p class="sub">Starting the installer...</p></div></div>
+<footer id="foot">ATLAS Setup runs only on this computer (127.0.0.1) and downloads nothing without your choice. You can close this window at any time before you press Install.</footer>
+<script>
+const T=new URLSearchParams(location.search).get('t')||'';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let S=null,OPT={},sig='',cancelled=false,finished=false,LOGOPEN=false;
+async function send(o){try{await fetch('/answer?t='+T,{method:'POST',body:JSON.stringify(o)})}catch(e){}}
+function optSig(s){return s.phase+'|'+s.mode+'|'+(s.options||[]).map(o=>o.id+(o.disabled?'!':'')).join(',')}
+function paint(){
+  const s=S;if(!s)return;
+  if($('sub'))$('sub').textContent=(s.platform==='mac'?'macOS':'Windows')+' installer \u00b7 v'+(s.version||'');
+  const a=$('app');
+  if(s.phase==='bye'){cancelled=true;bye(s.status||'Setup closed.');return}
+  if(s.phase==='welcome'){
+    if(sig!=='welcome'){sig='welcome';
+      a.innerHTML='<h2>ATLAS is already installed</h2><p>Version '+esc(s.installed_version||'?')+' is on this computer. This installer is version '+esc(s.version)+'.</p><div class="row"><button class="btn sel" data-a="update">'+(s.installed_version===s.version?'Reinstall / repair':'Update ATLAS')+'</button><button class="btn" data-a="uninstall">Uninstall</button><button class="btn" data-a="cancel">Cancel</button></div>';
+      a.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>send({action:b.dataset.a==='cancel'?'cancel':'choose',mode:b.dataset.a}));}
+    return;}
+  if(s.phase==='options'){
+    const sg=optSig(s);
+    if(sig!==sg){sig=sg;
+      (s.options||[]).forEach(o=>{if(!(o.id in OPT))OPT[o.id]=!!o.value;if(o.disabled)OPT[o.id]=!!o.value});
+      const uninstall=s.mode==='uninstall',upd=s.mode==='update';
+      let h='<h2>'+(uninstall?'Uninstall ATLAS':upd?'Update ATLAS':'Choose what to install')+'</h2><p class="sub">'+esc(s.blurb||'')+'</p><div class="opts">';
+      let g='';
+      (s.options||[]).forEach(o=>{
+        if(o.group&&o.group!==g){g=o.group;h+='<div class="grp">'+esc(g)+'</div>'}
+        h+='<label class="opt'+(o.disabled?' off':'')+'"><input type="checkbox" data-o="'+esc(o.id)+'"'+(OPT[o.id]?' checked':'')+(o.disabled?' disabled':'')+'><div><b>'+esc(o.label)+'</b><span class="d">'+esc(o.desc)+'</span></div>'+(o.size?'<span class="sz'+(/^\s*$/.test(o.size)?' n':'')+'">'+esc(o.size)+'</span>':'')+'</label>'});
+      h+='</div><div class="row"><button class="btn sel" id="go">'+(uninstall?'Uninstall':upd?'Update':'Install')+'</button>'+(s.can_back?'<button class="btn" id="back">Back</button>':'')+'<button class="btn" id="cancel">Cancel</button></div>';
+      a.innerHTML=h;
+      a.querySelectorAll('[data-o]').forEach(c=>c.onchange=()=>{OPT[c.dataset.o]=c.checked});
+      $('go').onclick=()=>send({action:'start',mode:s.mode,options:OPT});
+      $('cancel').onclick=()=>send({action:'cancel'});
+      if($('back'))$('back').onclick=()=>{sig='';send({action:'back'})};}
+    return;}
+  if(s.phase==='running'){
+    sig='running';
+    const un=s.mode==='uninstall';
+    let h='<h2>'+(un?'Uninstalling ATLAS':s.mode==='update'?'Updating ATLAS':'Installing ATLAS')+'</h2><div class="steps">'+(s.steps||[]).map((t,i)=>'<div class="st '+t.state+'"><span class="n">'+(i+1)+'</span><i>'+({ok:'\u2713',run:'\u25cf',fail:'\u2715',skip:'\u2013',pending:''}[t.state]||'')+'</i><span>'+esc(t.label)+'</span></div>').join('')+'</div>';
+    h+='<div class="status">'+esc(s.status||'')+'</div>';
+    const p=s.progress;
+    h+='<div class="bar'+(p==null?' ind':'')+'"><i style="width:'+(p==null?30:Math.max(2,Math.min(100,p)))+'%"></i></div><div class="pct"><span>'+(p==null?'working...':Math.round(p)+'%')+'</span><span>'+esc(s.eta||'')+'</span></div>';
+    h+='<details'+(LOGOPEN?' open':'')+'><summary>Details</summary><div class="log" id="log">'+esc((s.log||[]).join('\n'))+'</div></details>';
+    const keep=a.querySelector('details');if(keep)LOGOPEN=keep.open;
+    a.innerHTML=h;const d=a.querySelector('details');d.ontoggle=()=>{LOGOPEN=d.open};const l=$('log');if(l)l.scrollTop=l.scrollHeight;
+    return;}
+  if(s.phase==='done'){
+    if(sig==='done'+(s.result&&s.result.ok))return;sig='done'+(s.result&&s.result.ok);
+    const r=s.result||{};
+    let h='';
+    if(r.ok){
+      h+='<div class="big ok">\u2713</div><h2>'+esc(r.title||'ATLAS is ready')+'</h2><p>'+esc(r.message||'')+'</p>';
+      if(s.mode!=='uninstall')h+='<div class="next"><b>What happens when you press Finish</b><ol><li>ATLAS opens in its own window.</li><li>It asks which AI you use: <b>ChatGPT, Claude, Grok, OpenRouter or a local model</b>, and signs you in.</li><li>Then a few quick questions about you: <b>name, city and favorite sports</b> (all optional).</li></ol></div>';
+      h+='<div class="steps">'+(s.steps||[]).map((t,i)=>'<div class="st '+t.state+'"><span class="n">'+(i+1)+'</span><i>'+({ok:'\u2713',fail:'\u2715',skip:'\u2013',run:'\u25cf',pending:''}[t.state]||'')+'</i><span>'+esc(t.label)+'</span></div>').join('')+'</div>';
+      h+='<div class="row"><button class="btn sel" id="fin">'+(s.mode==='uninstall'?'Close':'Finish')+'</button>'+(s.mode!=='uninstall'?'<button class="btn" id="fin2">Close without opening</button>':'')+'</div>';
+    }else{
+      h+='<div class="big bad">!</div><h2>'+esc(r.title||'Something went wrong')+'</h2><div class="err">'+esc(r.message||'')+'</div><div class="steps">'+(s.steps||[]).map((t,i)=>'<div class="st '+t.state+'"><span class="n">'+(i+1)+'</span><i>'+({ok:'\u2713',fail:'\u2715',skip:'\u2013',run:'\u25cf',pending:''}[t.state]||'')+'</i><span>'+esc(t.label)+'</span></div>').join('')+'</div>';
+      h+='<details open><summary>Details</summary><div class="log">'+esc((s.log||[]).join('\n'))+'</div></details><div class="row"><button class="btn sel" id="fin">Close</button></div>';
+    }
+    a.innerHTML=h;
+    const f=$('fin'),f2=$('fin2');
+    if(f)f.onclick=()=>{finished=true;send({action:'finish',open:!!(r.ok&&s.mode!=='uninstall')});bye(r.ok&&s.mode!=='uninstall'?'Opening ATLAS... you can close this window.':'You can close this window.')};
+    if(f2)f2.onclick=()=>{finished=true;send({action:'finish',open:false});bye('You can close this window.')};
+    return;}
+}
+function bye(msg){$('app').innerHTML='<h2>'+esc(msg)+'</h2>';setTimeout(()=>{try{window.close()}catch(e){}},800)}
+async function tick(){
+  if(finished||cancelled)return;
+  try{const r=await fetch('/state?t='+T,{cache:'no-store'});if(r.ok){S=await r.json();paint()}}catch(e){}
+}
+setInterval(tick,600);tick();
+</script></body></html>

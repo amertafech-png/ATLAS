@@ -37,6 +37,9 @@ jobs:
             bash -n "$f"
           done
 
+      - name: Settings registry + voice/chat intents (pure Python, no network)
+        run: python bridge/dev/test_settings.py
+
       - name: JavaScript lint (const reassignment etc.)
         run: bash tools/check-js.sh
 

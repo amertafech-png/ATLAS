@@ -2,6 +2,12 @@
 
 (ATLAS, and its installers `ATLAS-Setup.bat` / `ATLAS-Setup.command`, do all of this for you; these notes document what they do.)
 
+## The installer window (no console prompts)
+Both installers show a **setup window** instead of console questions: Welcome, then an **Options** page (a checkbox per optional item with a one-line explanation and its download size), then a **step list with check marks**, a status line and a progress bar, then **Finish**, which opens ATLAS straight into its AI sign-in and the name/city/sports questions. Silent mode (`/update`, `--update`) shows nothing and reuses the saved choices (`install-options.json` in the data folder).
+* Windows: the window is Edge/Chrome in app mode, served by the installer itself (`HttpListener` on a random `127.0.0.1` port, with a random token in the URL and a Host-header check). macOS: the same page served by `src/mac/ui-server.pl` (Perl ships with macOS).
+* Hermes (detect, install, API key, start) and Ollama are installed inside this window. The first-run marker `<data>/first-run` makes ATLAS open into the sign-in; it is deleted when you finish the questions.
+* Options and defaults: Python (required if missing) on; Install Hermes (~1 GB) on if not found; Install Ollama (~1.9 GB Windows / ~230 MB macOS) **off**; speech models (~210 MB) on; wake-word model (~55 MB) **off**; CUDA (~1 GB) only if an NVIDIA GPU is detected, **off**; desktop shortcut on; start at sign-in on.
+
 Findings come from reading the `NousResearch/hermes-agent` source/docs
 (`gateway/platforms/api_server.py`, `website/docs/user-guide/features/api-server.md`).
 
@@ -40,7 +46,7 @@ and then, as before, `hermes auth add <provider>` / `hermes model` to sign in to
 * Equivalent `config.yaml` form (optional): `gateway: { api_server: { enabled: true, key: ..., port: 8642 } }` - env vars win over yaml.
 
 ## What ATLAS downloads
-ATLAS itself is one file you downloaded yourself (`ATLAS-Setup.bat` / `ATLAS-Setup.command`, about 1.3 MB; it carries the app inside). Everything below is fetched **only if you do not already have it**, and each item says when. Sizes are approximate.
+ATLAS itself is one file you downloaded yourself (`ATLAS-Setup.bat` / `ATLAS-Setup.command`, about 1.3 MB; it carries the app inside). Everything below is fetched **only if you do not already have it** (and, for optional items, only if you leave them ticked on the Options page), and each item says when. Sizes are approximate.
 This list was written from the code (`bash tools/list-downloads.sh` prints every URL, pip, winget, brew and model-pull in the source; run it after changing anything and keep this table in step).
 
 | What | What it is for | When | Size | From | Stored in | Optional? |
@@ -52,7 +58,7 @@ This list was written from the code (`bash tools/list-downloads.sh` prints every
 | **Piper voice** (`en_GB-alan-medium`) | ATLAS's spoken voice | Install (asks; "No" = first time it speaks) | ~60 MB | Hugging Face (`huggingface.co`, repo `rhasspy/piper-voices`) through `piper.download_voices` | `<ATLAS data folder>\voices` | Optional: macOS can use its built-in `say` voice instead; set `tts.download_if_missing` to `false` to forbid the download |
 | **CUDA libraries** (`nvidia-cublas-cu12`, `nvidia-cudnn-cu9`) | Lets speech recognition use an NVIDIA GPU | Install, **only** if `nvidia-smi` is found **and** you answer yes (default no) | ~1 GB | PyPI | The same `.venv` | Optional. The CPU is already fast for the base model |
 | **`vosk` package + Vosk speech model** `vosk-model-small-en-us-0.15` | The optional "Hey ATLAS" wake word (runs fully offline) | **Only when you switch Wake word on** in Settings -> Features (ATLAS asks you to confirm first) | package ~15 MB; model ~41 MB (SHA-256 checked, bad files are discarded) | package: PyPI. Model: `https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip` | `<ATLAS data folder>\features\wake_word\model` | Yes - off by default |
-| **Ollama** | Only if you choose "a local model" as your AI | **ATLAS never installs Ollama.** It detects it and, if missing, shows a link to `https://ollama.com/download` for you to install | (Ollama's own installer) | `ollama.com` | Chosen by Ollama | Yes |
+| **Ollama** | Only if you want a local model as your AI | **Only if you tick "Install Ollama for local models" on the Options page (default off)**, or install it yourself (the sign-in step links to `https://ollama.com/download`). Windows: `https://ollama.com/download/OllamaSetup.exe`, run silently. macOS: `https://ollama.com/download/Ollama-darwin.zip`, unpacked into `~/Applications`. Both are Ollama's official downloads | Windows ~1.9 GB, macOS ~230 MB | `ollama.com` | Chosen by Ollama's installer (Windows) / `~/Applications` (macOS) | Yes |
 | **A local model** (any Ollama model you pick, e.g. `llama3.1:8b`) | The AI itself when you pick the local option | Only when you press Connect / Download for a model Ollama does not have yet. ATLAS also creates a small copy of the model with a 64k context window (`ollama create`, no download) because Hermes needs that | 2-10+ GB depending on the model | Ollama's model library (via your own Ollama, `registry.ollama.ai`) | Ollama's model folder | Yes |
 | **ATLAS updates** | New versions of ATLAS | A check roughly every 12 hours (turn off in Settings -> Updates), the **Update** button downloads - nothing installs without you clicking. Release assets must match the release's `SHA256SUMS` or they are refused, and only `github.com` / `githubusercontent.com` addresses are accepted | ~1.3 MB per installer | `https://api.github.com/repos/amertafech-png/atlas/releases/latest` and that release's `ATLAS-Setup.*` files | A temporary file, then replaces the app in place | Yes (turn updates off) |
 

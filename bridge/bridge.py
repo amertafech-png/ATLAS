@@ -59,6 +59,11 @@ try:
 except OSError:
     DATA_DIR = HERE
 STATE_FILE = DATA_DIR / "state.json"
+FIRST_RUN_FILE = DATA_DIR / "first-run"   # written by a fresh interactive install; the HUD then opens straight into AI sign-in -> "about you" and removes it
+
+
+def first_run():
+    return FIRST_RUN_FILE.exists()
 
 DEFAULTS = {
     "host": "127.0.0.1", "port": 8765, "mode": "api",
@@ -170,6 +175,7 @@ CFG = load_config()
 import atlas_features  # noqa: E402  (feature framework, see atlas_features.py)
 import atlas_hermes  # noqa: E402  (finds / installs / connects Hermes, see atlas_hermes.py)
 import atlas_meta  # noqa: E402
+import atlas_settings  # noqa: E402  (settings registry + local voice/chat intent handler)
 import atlas_update  # noqa: E402
 VERSION = atlas_meta.VERSION
 
@@ -807,7 +813,7 @@ async def h_health(request):
     h = CFG["hermes"]
     st = await asyncio.get_running_loop().run_in_executor(None, HM.status)
     return web.json_response({
-        "setup": {"state": st["state"], "provider": st["provider"], "model": st["model"], "busy": st["busy"]},
+        "setup": {"state": st["state"], "provider": st["provider"], "model": st["model"], "busy": st["busy"], "first_run": first_run()},
         "ok": True, "bridge": True, "version": VERSION, "session_id": STATE["session_id"], "mode": CFG["mode"],
         "hermes": hv,
         "display": {"primary": hermes_model_label(), "fallback": h["display_fallback"], "next_job": h["display_next_job"]},
@@ -841,6 +847,14 @@ def _job_reply(res):
 async def h_setup_status(request):
     st = await _in_thread(HM.status, request.query.get("fresh") == "1")
     return web.json_response({"ok": True, **st, "providers": [{"id": k, "label": v["label"], "kind": v["kind"]} for k, v in atlas_hermes.PROVIDERS.items()]})
+
+
+async def h_setup_first_run_done(request):
+    try:
+        FIRST_RUN_FILE.unlink()
+    except OSError:
+        pass
+    return web.json_response({"ok": True})
 
 
 async def h_setup_install(request):
@@ -935,6 +949,16 @@ async def h_chat(request):
         return jerr("Empty message.", 400)
     t0 = time.time()
     add_history("user", text, body.get("kind", "chat"))
+    try:                                   # settings by voice/chat ("turn off wake word", "set my city to Dallas") are handled here, never sent to Hermes
+        local = await SETTINGS.handle(text)
+    except Exception as e:  # noqa
+        print("[bridge] settings intent failed:", type(e).__name__, e, flush=True)
+        local = None
+    if local:
+        add_history("assistant", local["reply"])
+        return web.json_response({"ok": True, "reply": local["reply"], "ms": int((time.time() - t0) * 1000), "session_id": STATE["session_id"],
+                                  "local": True, "changed": local["changed"], "ui": local["ui"], "pending": local["pending"],
+                                  "prefs": SETTINGS.prefs_view(), "profile": CFG.get("profile") or {}, "assistant": CFG.get("assistant")})
     try:
         reply = await hermes_text(text)
     except HermesError as e:
@@ -1112,6 +1136,107 @@ def _request_exit():
 UPDATER = atlas_update.Updater(CFG, DATA_DIR, DATA_DIR / "config.json", FEATURES.emit, _request_exit)
 
 
+class SettingsEnv:
+    """What the settings registry / intent handler (atlas_settings.py) may touch."""
+    cfg = CFG
+    features = FEATURES
+    updater = UPDATER
+    sport_names = SPORT_NAMES
+
+    def save(self, patch):
+        save_user_config(patch)
+
+    def assistant_name(self):
+        return assistant_name()
+
+    def update_profile(self, body):
+        return update_profile(body)[0:3]
+
+    def provider_label(self):
+        try:
+            return HM.provider_label()[0]
+        except Exception:  # noqa
+            return ""
+
+    def voice_changed(self):
+        with tts.lock:
+            tts.engine, tts.voice = None, None      # the next sentence loads the new voice
+
+    def autostart_get(self):
+        return atlas_settings.autostart_get()
+
+    def autostart_set(self, on):
+        return atlas_settings.autostart_set(on, HERE, DATA_DIR)
+
+    def uninstall_hint(self):
+        if atlas_settings._platform() == "windows":
+            return ("To uninstall, run ATLAS-Setup.bat again with the word uninstall: open a Command Prompt where the installer is and type ATLAS-Setup.bat uninstall. "
+                    "It asks whether to keep your notes and settings. I haven't deleted anything.")
+        return ("To uninstall, run the installer again from Terminal with the word uninstall, for example ./ATLAS-Setup.command uninstall. "
+                "It asks whether to keep your notes and settings. I haven't deleted anything.")
+
+    def reset(self):
+        f = DATA_DIR / "config.json"
+        try:
+            cur = json.loads(f.read_text(encoding="utf-8-sig")) if f.exists() else {}
+        except Exception:
+            cur = {}
+        for k in ("profile", "prefs", "assistant"):
+            cur.pop(k, None)
+        if isinstance(cur.get("tts"), dict):
+            for k in ("voice", "length_scale"):
+                cur["tts"].pop(k, None)
+        f.write_text(json.dumps(cur, indent=2), encoding="utf-8")
+        CFG["profile"] = copy.deepcopy(DEFAULTS["profile"])
+        CFG["assistant"] = copy.deepcopy(DEFAULTS["assistant"])
+        CFG["prefs"] = {}
+        CFG["tts"]["voice"], CFG["tts"]["length_scale"] = DEFAULTS["tts"]["voice"], DEFAULTS["tts"]["length_scale"]
+        self.voice_changed()
+
+
+SETTINGS = atlas_settings.Settings(SettingsEnv())
+
+
+async def h_settings(request):
+    return web.json_response({"ok": True, "settings": SETTINGS.describe(), "prefs": SETTINGS.prefs_view(), "assistant": CFG.get("assistant"), "profile": CFG.get("profile") or {}})
+
+
+async def h_setting_set(request):
+    """The Settings screen's setter: same rules as voice/chat (a risky change needs {"confirmed": true})."""
+    sid = request.match_info["sid"]
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    s = SETTINGS.by_id(sid)
+    if not s or s.kind in ("action", "list"):
+        return jerr("Unknown setting.", 404)
+    try:
+        value = SETTINGS._coerce(s, body.get("value"))
+    except ValueError as e:
+        return jerr(str(e), 400)
+    if SETTINGS.needs_confirm(s, value) and not body.get("confirmed"):
+        return web.json_response({"ok": False, "needs_confirm": True, "prompt": SETTINGS.confirm_prompt(s, value), "error": "Confirmation needed."}, status=409)
+    res = await SETTINGS._apply(s, value)
+    return web.json_response({"ok": True, "message": res["reply"], "ui": res.get("ui"), "settings": SETTINGS.describe(), "prefs": SETTINGS.prefs_view()})
+
+
+async def h_setting_run(request):
+    """Buttons (check for updates, install, reset, uninstall help). A risky one needs {"confirmed": true}."""
+    sid = request.match_info["sid"]
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    s = SETTINGS.by_id(sid)
+    if not s or s.kind != "action":
+        return jerr("Unknown action.", 404)
+    if s.confirm == "always" and not body.get("confirmed"):
+        return web.json_response({"ok": False, "needs_confirm": True, "prompt": SETTINGS.confirm_prompt(s, True), "error": "Confirmation needed."}, status=409)
+    res = await SETTINGS._run_action(s, True)
+    return web.json_response({"ok": True, "message": (res or {}).get("reply", ""), "changed": (res or {}).get("changed", []), "settings": SETTINGS.describe(), "prefs": SETTINGS.prefs_view()})
+
+
 async def h_update(request):
     return web.json_response({"ok": True, **UPDATER.state()})
 
@@ -1178,11 +1303,12 @@ def make_app():
         # feature framework
         web.get("/api/features", h_features), web.post("/api/features/{fid}", h_feature_set),
         web.get("/api/profile", h_profile_get), web.post("/api/profile", h_profile_set),
+        web.get("/api/settings", h_settings), web.post("/api/settings/{sid}", h_setting_set), web.post("/api/settings/{sid}/run", h_setting_run),
         web.get("/api/update", h_update), web.post("/api/update/check", h_update_check),
         web.post("/api/update/install", h_update_install), web.post("/api/update/settings", h_update_settings),
         web.get("/api/setup/status", h_setup_status), web.post("/api/setup/install", h_setup_install),
         web.post("/api/setup/fix", h_setup_fix), web.post("/api/setup/provider", h_setup_provider),
-        web.post("/api/setup/pull", h_setup_pull), web.post("/api/setup/test", h_setup_test),
+        web.post("/api/setup/pull", h_setup_pull), web.post("/api/setup/first-run-done", h_setup_first_run_done), web.post("/api/setup/test", h_setup_test),
         web.get("/api/setup/job/{jid}", h_setup_job), web.post("/api/setup/job/{jid}/input", h_setup_job_input),
         web.post("/api/setup/job/{jid}/cancel", h_setup_job_cancel),
         web.get("/api/events", h_events), web.post("/api/confirm", h_confirm),
@@ -1227,9 +1353,40 @@ def prefetch():
     return 0 if ok else 1
 
 
+def prefetch_wake():
+    """Download the optional wake-word package + speech model now (the installer's 'Download wake-word model' option). Does NOT turn the feature on."""
+    import importlib.util
+    sub = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "vosk"], capture_output=True, text=True)
+    if sub.returncode != 0:
+        print("[bridge] could not install the wake-word package: " + (sub.stderr or sub.stdout)[-200:], flush=True)
+        return 1
+    spec = importlib.util.spec_from_file_location("wake_word", HERE / "modules" / "wake_word.py")
+    ww = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ww)
+    dest = Path(os.environ["ATLAS_WAKE_MODEL"]) if os.getenv("ATLAS_WAKE_MODEL") else DATA_DIR / "features" / "wake_word" / "model" / ww.MODEL_NAME
+    if ww.model_ready(dest):
+        print("[bridge] wake-word model already there", flush=True)
+        return 0
+    last = [-1]
+
+    def prog(frac, text):
+        pct = int(frac * 100)
+        if pct != last[0] and pct % 10 == 0:
+            last[0] = pct
+            print(f"[bridge] {text} {pct}%", flush=True)
+    try:
+        ww.download_model(dest, prog, lambda: False)
+    except Exception as e:  # noqa
+        print(f"[bridge] wake-word model download failed: {e}", flush=True)
+        return 1
+    return 0
+
+
 def main():
     if "--prefetch" in sys.argv:
         sys.exit(prefetch())
+    if "--prefetch-wake" in sys.argv:
+        sys.exit(prefetch_wake())
     if "--set-profile" in sys.argv:          # used by the installers: --set-profile [--name N] [--assistant A] [--city C] [--sport "Soccer|Serie A,Premier League|Arsenal,Arsenal"]...
         a = sys.argv
         body = {k: a[a.index("--" + k) + 1] for k in ("name", "city") if "--" + k in a and a.index("--" + k) + 1 < len(a)}

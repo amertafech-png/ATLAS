@@ -223,6 +223,15 @@ class SetupError(Exception):
 
 
 # --------------------------------------------------------------------------- manager
+def ollama_exe():
+    """The ollama command, also where the installers / official downloads put it when it is not on PATH."""
+    extra = ["/usr/local/bin", "/opt/homebrew/bin", str(Path.home() / ".local" / "bin"),
+             str(Path.home() / "Applications" / "Ollama.app" / "Contents" / "Resources"), "/Applications/Ollama.app/Contents/Resources"]
+    if IS_WIN:
+        extra.append(os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Ollama"))
+    return shutil.which("ollama", path=os.pathsep.join([os.environ.get("PATH", "")] + extra))
+
+
 class HermesManager:
     def __init__(self, cfg, data_dir, say=print):
         self.cfg = cfg                       # the live CFG dict of bridge.py
@@ -520,9 +529,7 @@ class HermesManager:
                 models = sorted(m.get("name", "") for m in json.loads(body).get("models", []) if m.get("name"))
             except ValueError:
                 pass
-        exe = shutil.which("ollama", path=os.pathsep.join([os.environ.get("PATH", "")] + [
-            "/usr/local/bin", "/opt/homebrew/bin", str(Path.home() / ".local" / "bin")] +
-            ([os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Ollama")] if IS_WIN else [])))
+        exe = ollama_exe()
         return {"running": code == 200, "installed": bool(exe) or code == 200, "models": models,
                 "weak": [m for m in models if weak_model(m)], "recommended": RECOMMENDED_MODELS}
 
@@ -896,7 +903,7 @@ class HermesManager:
         """Make sure Ollama is up, the model is there, and a 64k-context copy exists (Hermes needs >= 64k)."""
         o = self.ollama()
         if not o["running"]:
-            exe = shutil.which("ollama")
+            exe = ollama_exe()
             if not exe:
                 raise SetupError("Ollama isn't installed. Get it from https://ollama.com/download, then come back and press Connect.", "no_ollama")
             job.add_log("Starting Ollama...")

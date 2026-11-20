@@ -16,11 +16,14 @@ is whatever Hermes itself sends to its model provider - same as using `hermes` i
 | **Windows 10/11** | `ATLAS-Setup.bat` | Double-click. SmartScreen: *More info -> Run anyway* (unsigned). |
 | **macOS 11+ (Intel or Apple Silicon)** | `ATLAS-Setup.command` | Double-click. Gatekeeper: right-click -> *Open* -> *Open*, or `xattr -d com.apple.quarantine ATLAS-Setup.command`. |
 
-Both installers: check Python 3.11+ (offer to install), find Hermes (or install it with its official installer if missing: `install.ps1` / `install.sh`
-from hermes-agent.nousresearch.com), install ATLAS, enable Hermes' local API with a **random key that is never printed** (an existing Hermes key is
-adopted instead; the file is backed up first), restart Hermes, download the speech models, and create the launchers. **Signing in to your AI happens
-inside ATLAS** the first time it opens (see below). **Re-running the installer updates ATLAS in place** (your settings, notes, models and Hermes config are
-kept). Run it and pick *Uninstall* (or `--uninstall` / `uninstall`) to remove ATLAS; Hermes is never touched.
+Both installers open a small **setup window** (Windows: an Edge/Chrome app window served by the installer on `127.0.0.1`; macOS: a browser window served by a tiny Perl script) - there are **no console prompts anywhere**:
+
+1. **Welcome** - what is about to happen.
+2. **Options** - checkboxes, each with a one-line reason and the approximate download size: Python (if missing, required), **Install Hermes Agent** (~1 GB, on), **Install Ollama for local models** (off; ~1.9 GB Windows, ~230 MB macOS), **Download the speech models now** (~210 MB, on), the **"Hey ATLAS" wake-word model** (~55 MB, off), **CUDA libraries** (~1 GB, shown only when an NVIDIA GPU is found, off), **Desktop shortcut** (on), **Start ATLAS when I sign in** (on).
+3. **Running** - a step list with check marks, a status line and a progress bar (Python, ATLAS files, Hermes detect/install, Hermes API key + start, speech models, shortcuts...). Hermes and Ollama are installed from inside this window.
+4. **Done** - press **Finish**: ATLAS opens straight into its **AI sign-in** (ChatGPT / Claude / Grok / OpenRouter / Local) and then asks your **name, city and favorite sports** (all skippable).
+
+**Re-running the installer updates ATLAS in place** and reuses your previous choices; a silent update (`ATLAS-Setup.bat /update`, `ATLAS-Setup.command --update`, which is what the in-app **Update** button runs) shows no window and asks nothing. Your settings, notes, models and Hermes config are kept. Run the installer with `uninstall` to remove ATLAS (the window asks whether to delete saved data); Hermes is never touched. The Hermes API key is random and never printed (an existing Hermes key is adopted; the file is backed up first).
 
 ### First run: connect your AI
 ATLAS checks Hermes by itself and walks you through whatever is missing - no files to edit:
@@ -53,10 +56,31 @@ browser's icon (Chromium app mode limitation); Safari-only Macs get a normal bro
 | Action | How |
 |---|---|
 | **Talk** | Click the orb / mic button, or press **Space**. Stops after ~1.4 s of silence (or Space again). **Esc** cancels. |
+| **Reply without pressing again** | **Conversation mode** (below) listens again after each spoken answer. |
 | **Hear the answer** | Spoken with Piper (British "alan" by default; macOS falls back to `say` if Piper can't install). Speaker button toggles. |
 | **Type** | Bottom bar -> Enter. The **Chat** module shows the whole conversation (voice + typed share one Hermes session). |
 | **Show it something** | Camera button -> preview -> optional question -> **Look**. |
 | **Settings** | Dock -> **Settings**: switch optional features on/off (see below). |
+
+## Conversation mode
+After ATLAS **finishes speaking** an answer to something you said (push-to-talk or the wake word), it listens again - by default for **6 seconds** (3-15 s, **Settings -> Features -> Listening window**; the switch is on by default). A **countdown ring** around the orb and a **soft tone** mark the window; it shows "hearing you" as soon as you start talking, and your reply is handled like any question (and opens another window after its answer).
+* It ends quietly if you do not start speaking (nothing is sent, no "I didn't hear anything"), or when you say **"that's all"**, **"stop"**, **"thanks"** (also "thank you", "never mind", "that's it", "no thanks"...), or press **Esc** or the mic button. Typing a message also ends it.
+* **It cannot hear itself:** the window opens only after the reply audio has ended (plus a 0.35 s guard), the wake-word listener is held off during the tone, and nothing opens while ATLAS is speaking. Typed questions and muted/text-only replies never open a window.
+* Say "turn off conversation mode" or "set the listening window to 10 seconds" - see below. Test: `bridge/dev/test_conversation.py`.
+
+## Settings by voice or chat
+Everything in **Settings** can also be changed by saying or typing it. The bridge answers these itself (a local intent handler in `/api/chat`, before anything is sent to Hermes) and the reply is spoken:
+* **Wake word / modules:** "turn off wake word", "turn on wake word", "turn on computer control", "turn off the daily brief".
+* **Sound:** "mute" / "unmute" (text-only replies), "use the lessac voice", "speak faster", "set the speaking speed to slow".
+* **Conversation:** "turn off conversation mode", "set the listening window to 10 seconds".
+* **You:** "change your name to Nova", "call me Adam", "set my city to Dallas".
+* **Sports:** "follow soccer", "follow Juventus in soccer", "add Serie A to my soccer leagues", "stop following Juventus", "remove soccer", "remove all my sports", "what sports do I follow".
+* **AI:** "switch to Claude" (opens the sign-in for it), **Panels:** "hide the weather panel", "show the sports panel". **System:** "turn on start at login", "turn off automatic updates", "check for updates", "install the update", "reset my settings", "uninstall ATLAS".
+* **Ask:** "what are my settings", "what is my city set to", "is conversation mode on", "what can I change".
+
+**Risky changes ask first** and wait for "yes" (typed or spoken; "no" or anything else cancels; the question expires after 2 minutes): turning the **wake word** (microphone) or an **add-on** (computer control, hand gestures, Telegram) ON, **switching the AI provider**, **removing a whole sport**, **installing an update**, **reset**, **uninstall**. Turning the wake word OFF is immediate, and ATLAS tells you it can no longer hear "Hey ATLAS" - turn it back on with push-to-talk, chat, or Settings -> Features. "Uninstall" only explains how; it never deletes anything itself.
+
+**One registry** (`bridge/atlas_settings.py`) lists every setting with its id, friendly names, type, allowed values, confirmation rule and example phrases. The Settings screen (`GET /api/settings`; the **General** tab is drawn straight from it), the setter (`POST /api/settings/<id>`, which enforces the same confirmation rule) and the voice/chat handler all use it, and a test checks that every entry is reachable by its example phrases (`bridge/dev/test_settings.py`, `test_settings_ui.py`). Values live in `config.json` (`prefs`, `profile`, `assistant`, `tts`, `features`); the bridge is the source of truth, so the HUD, voice and Settings never disagree.
 
 ## Settings - `config.json`
 Defaults live in `bridge/config.json`; put your overrides in **`<data dir>/config.json`** (survives updates; same keys, only what you change):
@@ -72,6 +96,7 @@ The installer asks (all skippable); change everything any time in the HUD: dock 
 * **Your name** - used in greetings.
 * **City** - resolved with Open-Meteo's free geocoder (no key) into latitude, longitude, timezone and units (Fahrenheit/mph in the US, Celsius/km/h elsewhere); type `City, State/Country` to disambiguate, or pick one of the suggestions. With no city the weather tile is greyed out with "Set your city in Settings".
 * **Sports** - pick your sports (Soccer, NFL, NBA, MLB, NHL, College football, F1, or type your own under "Other"), then add favorite teams for each (type or pick a suggestion; Soccer and College football can also take leagues/conferences such as Premier League or Serie A).
+  **Removing:** every team/league chip has an **X** (saved at once; the Sports tile updates immediately), click a team's name to **edit** it, and a sport can be removed with **X Remove sport** or the X on its chip - which asks "Remove Soccer and its 3 teams?" first. Removing the last sport leaves the Sports tile in its empty state. By voice: "remove soccer", "stop following Juventus".
   The Sports tile groups your teams by sport with an **Ask Hermes** button for the latest result (no live scores feed yet; ATLAS never invents scores).
 
 Stored in `config.json`: `assistant` (`name`, `wake_phrase`) and `profile` (`name`, `city`, `label`, `lat`, `lon`, `timezone`, `country`, `units`, `sports: [{sport, leagues, teams}]`).
