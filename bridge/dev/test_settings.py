@@ -22,7 +22,7 @@ def check(name, ok, info=""):
 class FakeFeatures:
     def __init__(self):
         self.f = {k: {"id": k, "title": t, "description": "d", "installed": True, "enabled": False, "status": "off", "missing": [], "error": "", "ui": False, "consent": c, "settings": {}}
-                  for k, t, c in [("wake_word", "Wake word", "mic"), ("daily_brief", "Daily brief", ""), ("reminders", "Reminders & timers", ""),
+                  for k, t, c in [("wake_word", "Wake word", "mic"), ("sample_tool", "Sample tool", ""),
                                   ("computer_control", "Computer control", ""), ("gestures", "Hand gestures", ""), ("telegram", "Telegram phone access", "")]}
         self.calls = []
 
@@ -52,8 +52,16 @@ class FakeUpdater:
         self.installed = True
 
 
+class FakeModules:
+    def __init__(self): self.on = True
+    def master_on(self): return self.on
+    def set_master(self, v): self.on = bool(v)
 class FakeEnv:
+    def addons_running(self): return [f["title"] for f in self.features.f.values() if f["enabled"]]
+    async def set_addons(self, on):
+        self.modules.set_master(on); self.features.calls.append(("addons", on))
     def __init__(self):
+        self.modules = FakeModules()
         self.cfg = {"profile": {"name": "", "city": "", "label": "", "sports": []}, "assistant": {"name": "ATLAS"}, "tts": {"voice": "en_GB-alan-medium", "length_scale": 1.0}}
         self.saved = []
         self.features, self.updater = FakeFeatures(), FakeUpdater()
@@ -123,12 +131,14 @@ check("registry ids are unique", len(ids) == len(set(ids)), ids)
 check("registry covers profile, assistant, sports, wake word, mute, conversation + window, AI provider, voice, modules, panels, login, updates, reset, uninstall",
       all(i in ids for i in ["user.name", "user.city", "user.sports", "assistant.name", "module.wake_word", "mute", "conversation.on", "conversation.secs", "ai.provider",
                              "voice.name", "voice.speed", "login", "updates.auto", "updates.check", "updates.install", "reset", "uninstall", "module.computer_control", "module.telegram",
-                             "panel.weather", "panel.sports", "panel.system"]))
-check("every entry says where it lives in Settings (ui) and has a title/group", all(s.ui in ("profile", "features", "ai", "general") and s.title and s.group for s in reg))
+                             "layout.L1", "layout.R3", "layout.reset"]))
+check("every entry says where it lives in Settings (ui) and has a title/group", all(s.ui in ("profile", "features", "ai", "general", "calendar") and s.title and s.group for s in reg))
 unreached = []
 for s in reg:
     if not s.examples:
         unreached.append((s.id, "no example"))
+        continue
+    if s.id == "calendar.sources":          # its phrases are answered by atlas_info (see test_info.py)
         continue
     for ex in s.examples:
         it = S.parse(ex)
@@ -199,14 +209,14 @@ r = say(S, "what's your name"); check("'what's your name'", "Nova" in r["reply"]
 r = say(S, "what is the listening window set to"); check("'what is the listening window set to'", "8 seconds" in r["reply"], r)
 r = say(S, "is conversation mode on"); check("'is conversation mode on'", "on" in r["reply"], r)
 r = say(S, "what are my settings")
-check("settings overview mentions each group", all(w.lower() in r["reply"].lower() for w in ["Adam", "Dallas", "Nova", "sports", "mute", "conversation mode", "listening window", "ChatGPT", "wake word", "hidden panels"]), r["reply"])
+check("settings overview mentions each group", all(w.lower() in r["reply"].lower() for w in ["Adam", "Dallas", "Nova", "sports", "mute", "conversation mode", "listening window", "ChatGPT", "wake word", "panel layout"]), r["reply"])
 
 # modules + risky confirmations
 env, S = fresh()
 r = say(S, "turn on computer control"); check("add-on module ON needs a confirmation", r["pending"] and not env.features.f["computer_control"]["enabled"], r)
 say(S, "yes"); check("...then it is on", env.features.f["computer_control"]["enabled"])
 r = say(S, "turn off computer control"); check("add-on module OFF needs no confirmation", not r["pending"] and not env.features.f["computer_control"]["enabled"])
-r = say(S, "turn on the daily brief"); check("a harmless module (daily brief) switches on directly", not r["pending"] and env.features.f["daily_brief"]["enabled"], r)
+r = say(S, "turn on the sample tool"); check("a harmless module switches on directly", not r["pending"] and env.features.f["sample_tool"]["enabled"], r)
 r = say(S, "turn on telegram"); check("telegram ON asks", r["pending"]); say(S, "cancel")
 r = say(S, "enable hand gestures"); check("gestures (webcam) ON asks", r["pending"]); say(S, "no")
 # AI provider
@@ -230,10 +240,46 @@ r = say(S, "turn on start at login"); check("start at login on", env.auto is Tru
 r = say(S, "use the lessac voice"); check("voice change saves + reloads the engine", env.cfg["tts"]["voice"] == "en_US-lessac-medium" and env.voice_reloads == 1, r)
 r = say(S, "speak faster"); check("speak faster", env.cfg["tts"]["length_scale"] == 0.85, r)
 r = say(S, "set the speaking speed to slow"); check("speed slow", env.cfg["tts"]["length_scale"] == 1.2)
-r = say(S, "hide the weather panel"); check("hide the weather panel", env.cfg["prefs"]["panels_hidden"] == ["weather"], r)
-r = say(S, "show the weather panel"); check("show the weather panel", env.cfg["prefs"]["panels_hidden"] == [], r)
-r = say(S, "turn off the sports panel"); check("'turn off the sports panel'", env.cfg["prefs"]["panels_hidden"] == ["sports"])
-r = say(S, "hide system"); check("bare panel name works with hide", "system" in env.cfg["prefs"]["panels_hidden"])
+r = say(S, "hide the weather panel"); check("hide the weather panel -> its slot is empty (saved)", env.cfg["prefs"]["layout"]["L2"] is None and "weather" in r["reply"], r)
+r = say(S, "show the weather panel"); check("show the weather panel -> back in a free slot", env.cfg["prefs"]["layout"]["L2"] == "weather", r)
+r = say(S, "turn off the sports panel"); check("'turn off the sports panel'", env.cfg["prefs"]["layout"]["R1"] is None)
+r = say(S, "hide system"); check("bare panel name works with hide", env.cfg["prefs"]["layout"]["R2"] is None)
+say(S, "reset my layout")
+
+# ------------------------------------------------------------------ 2b. panel slots
+env, S = fresh()
+D = A.L.DEFAULT_LAYOUT
+lay = lambda: A.L.get_layout(env.cfg.get("prefs") or {})
+check("default layout: clock/weather/scanner left, sports/system/hermes right", lay() == D)
+r = say(S, "replace the scanner with the hermes panel")
+check("'replace the scanner with ...' puts the new panel in the scanner's slot (the other one is already on screen, so they swap)", lay()["L3"] == "hermes" and lay()["R3"] == "scanner" and "bottom left" in r["reply"] and r["changed"], (lay(), r))
+check("...and says how to undo it", "reset my layout" in r["reply"])
+r = say(S, "put sports where weather is")
+check("'put sports where weather is' swaps (sports was on screen)", lay()["L2"] == "sports" and lay()["R1"] == "weather", lay())
+r = say(S, "swap the clock and the system panel"); check("swap two panels", lay()["L1"] == "system" and lay()["R2"] == "clock", lay())
+r = say(S, "put the weather in the top left"); check("'put the weather in the top left' by slot name", lay()["L1"] == "weather", lay())
+say(S, "hide the scanner panel")
+r = say(S, "what panels can I use"); check("'what panels can I use' lists them and what is on screen", "Clock" in r["reply"] and "Scanner" in r["reply"] and "On screen now" in r["reply"] and not r["pending"], r["reply"])
+check("...and mentions the one that is off screen", "Not on screen" in r["reply"], r["reply"])
+r = say(S, "what's in the top left"); check("'what's in the top left'", "weather" in r["reply"], r["reply"])
+r = say(S, "where is the scanner"); check("'where is the scanner' (off screen)", "isn't on screen" in r["reply"], r["reply"])
+r = say(S, "show the scanner panel"); check("'show the scanner panel' goes into the free slot", "scanner" in lay().values() and "now in the" in r["reply"], r["reply"])
+r = say(S, "reset my layout"); check("'reset my layout'", lay() == D and "back where it started" in r["reply"], r)
+r = say(S, "replace the globe with the weather"); check("aliases work (globe = scanner, replacing with weather swaps)", lay()["L3"] == "weather" and lay()["L2"] == "scanner", lay())
+say(S, "reset my layout")
+r = say(S, "replace the scanner with the stock ticker"); check("a panel that does not exist in this version is refused politely", lay() == D and ("isn't installed" in r["reply"] or r is None) if r else True, r)
+S.env.panels_available = lambda: set(A.L.CATALOG) - {"weather"}
+r = say(S, "replace the scanner with the weather"); check("a panel that is not installed/available cannot be chosen", lay() == D and "isn't installed" in r["reply"], (lay(), r))
+r = say(S, "put the clock in the middle right"); check("slot picker via registry set (enum) works too", lay()["R2"] == "clock", lay())
+res = run(S._apply(S.by_id("layout.L1"), S._coerce(S.by_id("layout.L1"), "system"))); check("Settings picker -> layout.L1 = system swaps", lay()["L1"] == "system" and lay()["R2"] == "clock", lay())
+res = run(S._apply(S.by_id("layout.L1"), S._coerce(S.by_id("layout.L1"), "empty"))); check("Settings picker 'empty' empties the slot", lay()["L1"] is None)
+try:
+    S._coerce(S.by_id("layout.L1"), "weather"); check("unavailable panel rejected by the picker", False)
+except ValueError:
+    check("unavailable panel rejected by the picker", True)
+del S.env.panels_available
+check("legacy v1.3 'panels_hidden' becomes empty slots", A.L.get_layout({"panels_hidden": ["weather"]})["L2"] is None)
+check("layout is persisted through save()", any("layout" in x.get("prefs", {}) for x in env.saved))
 
 # ------------------------------------------------------------------ 3. sports
 env, S = fresh()
@@ -289,5 +335,29 @@ with tempfile.TemporaryDirectory() as td:
     check("mac: off removes it", not A.autostart_get("mac"))
     check("linux: says it isn't set up", "isn't set up" in (A.autostart_set(True, td, td, "linux") or ""))
 
+
+# ---- add-on master switch (1.4)
+env.features.f["wake_word"]["enabled"] = True
+r = say(S, "turn off add-on modules")
+check("master switch OFF asks first (and names what stops)", r["pending"] and "Wake word" in r["reply"] and env.modules.on is True, r)
+r = say(S, "no"); check("...'no' leaves add-ons on", env.modules.on is True and not r["changed"], r)
+say(S, "turn off add-ons"); r = say(S, "yes")
+check("...'yes' switches every add-on off", env.modules.on is False and ("addons", False) in env.features.calls and "addons.enabled" in r["changed"], r)
+r = say(S, "turn on add-on modules")
+check("master switch ON needs no question", not r["pending"] and env.modules.on is True and "New ones will still wait for your approval" in r["reply"], r)
+r = say(S, "is add-on modules on"); check("master switch can be read back", r and "on" in r["reply"].lower(), r)
+env.features.f["sample_tool"]["status"] = "needs_approval"
+r = say(S, "turn on the sample tool")
+check("a new unapproved module cannot be turned on by voice; the review is opened instead", not env.features.f["sample_tool"]["enabled"] and (r["ui"] or {}).get("open") == "modules" and "hasn't been checked" in r["reply"], r)
+env.features.f["sample_tool"]["status"] = "off"
+# ---- skins and task animations
+env, S = fresh()
+r = say(S, "change the skin to ember"); check("skin: 'change the skin to ember'", env.cfg["prefs"].get("skin") == "ember" and "ember" in r["reply"], (r, env.cfg.get("prefs")))
+r = say(S, "use the violet theme"); check("skin: 'use the violet theme'", env.cfg["prefs"].get("skin") == "violet", (r, env.cfg.get("prefs")))
+r = say(S, "set the theme to green"); check("skin: color words map to a skin (green -> emerald)", env.cfg["prefs"].get("skin") == "emerald", (r, env.cfg.get("prefs")))
+r = say(S, "set the skin to plaid"); check("skin: an unknown skin is refused with the choices", env.cfg["prefs"].get("skin") == "emerald" and "ember" in r["reply"] and "violet" in r["reply"], r)
+r = say(S, "go back to the original skin") or say(S, "set the skin to default"); check("skin: back to the original", env.cfg["prefs"].get("skin") == "cyan", (r, env.cfg.get("prefs")))
+check("skin: shows in prefs_view for the HUD", S.prefs_view()["skin"] == "cyan" and S.prefs_view()["task_animations"] is True)
+r = say(S, "turn off task animations"); check("animations: can be turned off", env.cfg["prefs"].get("task_animations") is False and S.prefs_view()["task_animations"] is False, (r, env.cfg.get("prefs")))
 print("FAILED: %s" % fails if fails else "ALL PASSED")
 sys.exit(1 if fails else 0)

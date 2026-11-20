@@ -23,6 +23,8 @@ import sys
 import time
 from pathlib import Path
 
+import atlas_layout as L
+
 PENDING_TTL = 120
 
 NUMBER_WORDS = {w: i for i, w in enumerate(
@@ -43,18 +45,25 @@ VOICES = {"alan": "en_GB-alan-medium", "lessac": "en_US-lessac-medium", "amy": "
           "jenny": "en_GB-jenny_dioco-medium"}
 SPEEDS = {"slow": 1.2, "normal": 1.0, "fast": 0.85}
 
-PANELS = {"clock": ("Clock", ["clock", "chronometer", "time"]), "weather": ("Weather", ["weather"]),
-          "scanner": ("Scanner", ["scanner", "radar", "globe", "location scanner"]), "sports": ("Sports", ["sports", "scores"]),
-          "system": ("System", ["system", "system stats", "cpu"]), "hermes": ("Hermes status", ["hermes", "hermes status", "ai status"])}
-
 # optional modules that open the microphone / camera or let ATLAS act on the computer: asking first when they are switched ON
+SKINS = ["cyan", "ember", "violet", "emerald"]
+SKIN_WORDS = {"cyan": "cyan", "blue": "cyan", "default": "cyan", "original": "cyan", "classic": "cyan", "normal": "cyan", "standard": "cyan",
+              "ember": "ember", "orange": "ember", "amber": "ember", "fire": "ember", "red": "ember", "violet": "violet", "purple": "violet", "emerald": "emerald", "green": "emerald"}
 ADDON_CONFIRM = {"wake_word", "computer_control", "gestures", "telegram"}
 MODULE_WORDS = {"wake_word": ["wake word", "wake phrase", "wakeword", "wake-word", "hands free mode", "hands-free mode"],
-                "daily_brief": ["daily brief", "morning brief", "daily briefing"],
-                "reminders": ["reminders", "reminders and timers", "timers"],
                 "computer_control": ["computer control", "pc control"],
                 "gestures": ["hand gestures", "gestures", "gesture control"],
                 "telegram": ["telegram", "telegram phone access", "phone access"]}
+
+
+# bool preferences that are plain flags in prefs: id -> (prefs key, default, message when on, message when off)
+PREF_BOOLS = {
+    "sports.live": ("live_scores", True, "Live scores are on. I'll check ESPN for the teams you follow.", "Live scores are off. I won't contact the score service."),
+    "theme.animations": ("task_animations", True, "Okay, the center will change with what I'm doing: searching, weather, and music each get their own look.", "Okay, the center will keep one steady look."),
+    "computer.confirm": ("launch_confirm", True, "Okay, I'll ask before opening an app or game.", "Okay, I'll open apps and games as soon as you ask. Say turn on launch confirmation to go back to asking."),
+    "reminders.chime": ("reminder_chime", True, "Okay, reminders and timers will play a chime before they speak.", "Okay, reminders and timers will speak without the chime."),
+    "brief.morning": ("brief_morning", False, "Okay, I'll read you your brief the first time you open me each morning.", "Okay, no automatic morning brief. You can still say give me my brief."),
+}
 
 
 class Setting:
@@ -89,6 +98,25 @@ def static_registry():
           examples=["use the lessac voice", "set my voice to amy"], desc="Which built-in voice reads replies (downloads once when first used)."),
         S("voice.speed", "Speaking speed", "Sound and voice", "enum", ["speaking speed", "speech speed", "voice speed", "talking speed", "speed"], choices=list(SPEEDS),
           examples=["speak faster", "set the speaking speed to slow"], desc="slow, normal or fast."),
+        # ---- look
+        S("theme.skin", "Skin (color theme)", "Look", "enum", ["skin", "theme", "color theme", "colour theme", "color scheme", "colour scheme", "hud skin", "hud theme", "hud color", "hud colour", "colors", "colours", "skins", "themes"], choices=list(SKINS),
+          examples=["change the skin to ember", "use the violet theme", "set the theme to emerald"], desc="cyan (the original), ember, violet or emerald."),
+        S("theme.animations", "Task animations", "Look", "bool", ["task animations", "center animations", "centre animations", "orb animations", "animations", "orb scenes"],
+          examples=["turn off task animations", "turn on task animations"], desc="The center changes with what ATLAS is doing: thinking, searching, weather, music."),
+        # ---- panels: calendar, live scores, daily brief
+        S("calendar.sources", "Calendars", "Calendar and daily brief", "list", ["calendar sources", "calendar links", "my calendars", "calendars", "connected calendars"], ui="calendar",
+          examples=["what calendars do I have", "remove the work calendar"], desc="Calendar files or secret links (Google, Outlook) shown on the Calendar panel. Add links in Settings - they are too long to say."),
+        S("sports.live", "Live scores", "Calendar and daily brief", "bool", ["live scores", "live sports scores", "score updates", "live sports", "sports scores online", "live game scores"],
+          examples=["turn off live scores", "turn on live scores"], desc="Look up scores for the teams you follow on ESPN's public scoreboard (sends only the league and date; no account)."),
+        S("reminders.chime", "Reminder chime", "Calendar and daily brief", "bool", ["reminder chime", "reminders chime", "timer chime", "alert chime", "reminder sound", "timer sound", "chime"],
+          examples=["turn off the reminder chime", "turn on the reminder chime"], desc="Play a short chime before a reminder or timer is spoken."),
+        S("brief.morning", "Speak my brief each morning", "Calendar and daily brief", "bool", ["morning brief", "spoken brief", "automatic brief", "brief each morning", "brief at startup", "morning briefing", "daily briefing"],
+          examples=["turn on the morning brief", "turn off the morning brief"], desc="The first time you open ATLAS each morning it reads you the weather, your calendar, your teams' games and reminders. You can always say give me my brief."),
+        S("addons.enabled", "Add-on modules (master switch)", "Add-on modules", "bool", ["add-on modules", "addon modules", "add on modules", "add-ons", "addons", "add ons", "all add-ons", "all addons", "all modules", "modules", "extensions", "plugins"],
+          ui="features", confirm="off", examples=["turn off add-on modules", "turn on add-on modules"],
+          desc="One switch for every add-on module. Off = none of them can run. New add-ons always wait for your approval first."),
+        S("computer.confirm", "Ask before opening apps and games", "Add-on modules", "bool", ["launch confirmation", "open confirmation", "ask before opening", "ask before launching", "confirm before opening", "confirm before launching", "confirm launches", "confirm app launches"],
+          examples=["turn off launch confirmation", "turn on launch confirmation"], desc="With Computer control on: ask \"Open X? Say yes or no.\" before every launch."),
         # ---- AI connection tab
         S("ai.provider", "AI provider", "AI connection", "enum", ["ai provider", "my ai provider", "provider", "ai", "my ai", "ai connection", "model provider", "ai service", "ai model"],
           ui="ai", confirm="always", choices=sorted(set(PROVIDER_WORDS.values())), examples=["switch to Claude", "change my AI provider to ChatGPT"],
@@ -108,6 +136,12 @@ def static_registry():
     ]
 
 
+def panels_available(env):
+    """Panels that can be chosen: the built-in ones, plus panels of installed add-on modules (none ship yet)."""
+    fn = getattr(env, "panels_available", None)
+    return set(fn()) if fn else set(L.CATALOG)
+
+
 def build_registry(env):
     """The static settings + one row per optional module + one per dashboard panel."""
     reg = static_registry()
@@ -119,9 +153,14 @@ def build_registry(env):
         reg.append(Setting("module." + fid, f["title"], "Add-on modules", "bool", words, ui="features",
                            confirm="on" if (fid in ADDON_CONFIRM or f.get("consent")) else None,
                            examples=["turn off " + f["title"].lower(), "turn on " + f["title"].lower()], desc=f.get("description", "")))
-    for pid, (title, words) in PANELS.items():
-        reg.append(Setting("panel." + pid, title + " panel", "Panel layout", "bool", [w + " panel" for w in words] + [w + " tile" for w in words],
-                           ui="general", examples=["hide the %s panel" % pid, "show the %s panel" % pid], desc="Show or hide this tile on the dashboard."))
+    avail = panels_available(env)
+    for slot in L.SLOTS:
+        reg.append(Setting("layout." + slot, "Panel: " + L.SLOT_LABEL[slot], "Panel layout", "enum", [L.SLOT_LABEL[slot] + " panel", L.SLOT_LABEL[slot] + " slot", L.SLOT_LABEL[slot] + " spot"],
+                           ui="general", choices=["empty"] + [p for p in L.CATALOG if p in avail],
+                           examples=["put the %s in the %s" % (("weather" if slot != "L2" else "clock"), L.SLOT_LABEL[slot]), "what is in the %s" % L.SLOT_LABEL[slot]],
+                           desc="Which panel fills the %s slot of the dashboard." % L.SLOT_LABEL[slot]))
+    reg.append(Setting("layout.reset", "Reset panel layout", "Panel layout", "action", ["reset layout", "reset my layout", "default layout"], ui="general",
+                       examples=["reset my layout"], desc="Puts every panel back where it started."))
     return reg
 
 
@@ -240,6 +279,12 @@ class Settings:
             return e.assistant_name()
         if s.id == "conversation.on":
             return bool(prefs.get("conversation_on", True))
+        if s.id in PREF_BOOLS:
+            return bool(prefs.get(PREF_BOOLS[s.id][0], PREF_BOOLS[s.id][1]))
+        if s.id == "calendar.sources":
+            return e.calendar_sources() if hasattr(e, "calendar_sources") else []
+        if s.id == "addons.enabled":
+            return bool(e.modules.master_on()) if hasattr(e, "modules") else True
         if s.id == "conversation.secs":
             return int(prefs.get("conversation_secs", 6))
         if s.id == "mute":
@@ -247,6 +292,8 @@ class Settings:
         if s.id == "voice.name":
             cur = (cfg.get("tts") or {}).get("voice", "")
             return next((k for k, v in VOICES.items() if v == cur), cur)
+        if s.id == "theme.skin":
+            return prefs.get("skin") if prefs.get("skin") in SKINS else "cyan"
         if s.id == "voice.speed":
             ls = float((cfg.get("tts") or {}).get("length_scale", 1.0))
             return min(SPEEDS, key=lambda k: abs(SPEEDS[k] - ls))
@@ -259,8 +306,8 @@ class Settings:
         if s.id.startswith("module."):
             f = next((f for f in e.features.describe() if f["id"] == s.id[7:]), None)
             return bool(f and f["enabled"])
-        if s.id.startswith("panel."):
-            return s.id[6:] not in (prefs.get("panels_hidden") or [])
+        if s.id.startswith("layout.") and s.id[7:] in L.SLOTS:
+            return L.get_layout(prefs).get(s.id[7:]) or "empty"
         return None
 
     def describe(self):
@@ -273,13 +320,15 @@ class Settings:
                 d["lo"], d["hi"] = s.lo, s.hi
             if s.kind == "enum":
                 d["choices"] = s.choices
+                if s.id.startswith("layout."):
+                    d["labels"] = {"empty": "(empty)", **{p: L.title(p) for p in L.CATALOG}}
             out.append(d)
         return out
 
     def prefs_view(self):
         p = self.env.cfg.get("prefs") or {}
         return {"conversation_on": bool(p.get("conversation_on", True)), "conversation_secs": int(p.get("conversation_secs", 6)),
-                "mute": bool(p.get("mute", False)), "panels_hidden": list(p.get("panels_hidden") or [])}
+                "mute": bool(p.get("mute", False)), "live_scores": bool(p.get("live_scores", True)), "reminder_chime": bool(p.get("reminder_chime", True)), "launch_confirm": bool(p.get("launch_confirm", True)), "skin": p.get("skin") if p.get("skin") in SKINS else "cyan", "task_animations": bool(p.get("task_animations", True)), "brief_morning": bool(p.get("brief_morning", False)), "brief_last": str(p.get("brief_last", "")), "layout": L.get_layout(p), "panels_available": sorted(panels_available(self.env))}
 
     def _pref(self, key, value):
         prefs = self.env.cfg.setdefault("prefs", {})
@@ -292,6 +341,8 @@ class Settings:
             return True
         if s.confirm == "on" and value is True:
             return True
+        if s.confirm == "off" and value is False:
+            return True
         return False
 
     def confirm_prompt(self, s, value):
@@ -303,6 +354,10 @@ class Settings:
             return "%s is an add-on that %s Switch it on? Say yes or no." % (s.title, {
                 "module.computer_control": "lets me open apps and files on this computer (anything destructive still asks first).",
                 "module.gestures": "uses your webcam.", "module.telegram": "lets your phone talk to me through your own Telegram bot."}.get(s.id, "can act on its own."))
+        if s.id == "addons.enabled":
+            run = self.env.addons_running() if hasattr(self.env, "addons_running") else []
+            return ("Turn off all add-on modules? %s Nothing optional will run until you turn them back on. Say yes or no."
+                    % (("This stops: %s." % say_list(run)) if run else "None are running right now."))
         if s.id == "ai.provider":
             return "Switch your AI to %s? I'll open the sign-in screen so you can connect it. Say yes or no." % PROVIDER_LABEL.get(value, str(value))
         if s.id == "updates.install":
@@ -334,6 +389,11 @@ class Settings:
         m = re.fullmatch(r"(?:speak|talk) (faster|slower|normally|more slowly|quicker)", low)
         if m:
             return Intent(op="set", id="voice.speed", value={"faster": "fast", "quicker": "fast", "slower": "slow", "more slowly": "slow", "normally": "normal"}[m.group(1)])
+
+        # ---- panel layout (slots)
+        lp = L.parse(low, panels_available(self.env) | set(L.CATALOG))
+        if lp:
+            return self._layout_intent(lp)
 
         # ---- sports / teams
         it = self._parse_sports(t, low)
@@ -386,6 +446,11 @@ class Settings:
         if m and (m.group(1).strip() in VOICES):
             return Intent(op="set", id="voice.name", value=m.group(1).strip())
 
+        # ---- skin: "use the violet theme", "go back to the original skin"
+        m = re.fullmatch(r"(?:use|switch to|change to|try|go back to|go to|pick)(?: (?:the|a|my))? (.+?) (?:skin|theme|colou?rs?|colou?r scheme)", low)
+        if m and m.group(1).strip() in SKIN_WORDS:
+            return Intent(op="set", id="theme.skin", value=SKIN_WORDS[m.group(1).strip()])
+
         # ---- names, city
         m = re.fullmatch(r"(?:call me|please call me|you can call me|my name is|i am called|i'm called|set my name to)\s+(.+)", t, flags=re.I)
         if m and len(m.group(1)) <= 40:
@@ -396,16 +461,6 @@ class Settings:
         m = re.fullmatch(r"(?:my city is|my location is|i live in|i'm from|i am from|set my city to)\s+(.+)", t, flags=re.I)
         if m:
             return Intent(op="set", id="user.city", value=m.group(1).strip(" ."))
-
-        # ---- hide / show panels (accept the bare panel name)
-        m = re.fullmatch(r"(hide|show|display|remove|bring back)\s+(?:the\s+|my\s+)?(.+)", low)
-        if m:
-            x = m.group(2)
-            s, _ = self.resolve(x, reg=reg)
-            if not s or not s.id.startswith("panel."):
-                s, _ = self.resolve(re.sub(r"\s+(?:panel|tile|widget)$", "", x) + " panel", reg=reg)
-            if s and s.id.startswith("panel."):
-                return Intent(op="set", id=s.id, value=(m.group(1) not in ("hide", "remove")))
 
         # ---- on / off
         m = re.fullmatch(r"(?:turn|switch|set|put|flip)\s+(on|off)\s+(.+)", low)
@@ -441,6 +496,113 @@ class Settings:
             if s:
                 return Intent(op="set", id=s.id, value=m.group(2))
         return None
+
+    # ---- panel layout
+    def _layout(self):
+        return L.get_layout(self.env.cfg.get("prefs") or {})
+
+    def _save_layout(self, lay):
+        self._pref("layout", dict(lay))
+        prefs = self.env.cfg.get("prefs") or {}
+        if "panels_hidden" in prefs:                       # v1.3 leftovers are folded into the layout
+            prefs.pop("panels_hidden", None)
+            self.env.save({"prefs": {"panels_hidden": []}})
+
+    def _layout_intent(self, lp):
+        act, lay = lp["act"], self._layout()
+        it = Intent(op="layout", act=act, **{k: v for k, v in lp.items() if k not in ("op", "act")})
+        if act == "reset":
+            it["id"] = "layout.reset"
+        elif act in ("replace", "swap"):
+            it["id"] = "layout." + (L.where(lay, lp["a"]) or L.where(lay, lp["b"]) or "L1")
+        elif act in ("place", "slot_get"):
+            it["id"] = "layout." + lp["slot"]
+        elif act in ("hide", "where"):
+            it["id"] = "layout." + (L.where(lay, lp["panel"]) or "L1")
+        elif act == "show":
+            it["id"] = "layout." + (L.where(lay, lp["panel"]) or next((x for x in L.SLOTS if not lay.get(x)), "L1"))
+        else:
+            it["id"] = "layout.reset"
+        return it
+
+    def _layout_exec(self, it):
+        """Returns the reply dict (the layout is saved here)."""
+        act, lay, avail = it["act"], self._layout(), panels_available(self.env)
+        T = L.title
+        def usable(pid):
+            return pid in avail
+        if act == "reset":
+            self._save_layout(dict(L.DEFAULT_LAYOUT))
+            return self._r("Done. Every panel is back where it started.", ["layout.reset"] + ["layout." + x for x in L.SLOTS])
+        if act == "list":
+            on, empty, off = L.describe(lay, avail)
+            return self._r("You can use these panels: %s. On screen now: %s.%s%s Say, for example, replace the scanner with the calendar, or put sports where weather is."
+                           % (say_list([T(p) for p in L.CATALOG if p in avail]), say_list(["%s in the %s" % (b.lower(), a) for a, b in on]) or "nothing",
+                              (" Not on screen: %s." % say_list(off)) if off else "", (" Empty slots: %s." % say_list(empty)) if empty else ""))
+        if act == "layout":
+            on, empty, off = L.describe(lay, avail)
+            return self._r("On screen: %s.%s" % (say_list(["%s in the %s" % (b.lower(), a) for a, b in on]) or "nothing", (" Empty: %s." % say_list(empty)) if empty else ""))
+        if act == "slot_get":
+            pid = lay.get(it["slot"])
+            return self._r("The %s slot shows %s." % (L.SLOT_LABEL[it["slot"]], ("the " + T(pid).lower() + " panel") if pid else "nothing"))
+        if act == "where":
+            sl = L.where(lay, it["panel"])
+            return self._r("The %s panel is in the %s slot." % (T(it["panel"]).lower(), L.SLOT_LABEL[sl]) if sl else "The %s panel isn't on screen right now. Say show the %s panel, or put it in a slot." % (T(it["panel"]).lower(), T(it["panel"]).lower()))
+        # ---- changes
+        names = [x for x in (it.get("a"), it.get("b"), it.get("panel")) if x]
+        for pid in names:
+            if not usable(pid):
+                return self._r("The %s panel isn't installed in this version, so I can't use it." % T(pid).lower())
+        changed = ["layout." + x for x in L.SLOTS]
+        if act == "hide":
+            lay2, sl = L.hide(lay, it["panel"])
+            if not sl:
+                return self._r("The %s panel isn't on screen." % T(it["panel"]).lower())
+            self._save_layout(lay2)
+            return self._r("Okay, the %s panel is hidden and the %s slot is empty. Say show the %s panel to bring it back." % (T(it["panel"]).lower(), L.SLOT_LABEL[sl], T(it["panel"]).lower()), changed)
+        if act == "show":
+            if L.where(lay, it["panel"]):
+                return self._r("The %s panel is already on screen, in the %s slot." % (T(it["panel"]).lower(), L.SLOT_LABEL[L.where(lay, it["panel"])]))
+            free = next((x for x in L.SLOTS if not lay.get(x)), None)
+            if not free:
+                return self._r("All six slots are full. Say, for example, replace the scanner with the %s, and tell me which one to swap out." % T(it["panel"]).lower())
+            lay2, _d, _s = L.place(lay, it["panel"], free)
+            self._save_layout(lay2)
+            return self._r("The %s panel is now in the %s slot." % (T(it["panel"]).lower(), L.SLOT_LABEL[free]), changed)
+        if act == "swap":
+            a, b = it["a"], it["b"]
+            sa, sb = L.where(lay, a), L.where(lay, b)
+            if not (sa and sb):
+                return self._r("Both panels need to be on screen to swap them. Try replace %s with %s." % (T(a).lower(), T(b).lower()))
+            lay2, _d, _s = L.place(lay, a, sb)
+            self._save_layout(lay2)
+            return self._r("Swapped: the %s is now in the %s and the %s is in the %s." % (T(a).lower(), L.SLOT_LABEL[sb], T(b).lower(), L.SLOT_LABEL[sa]), changed)
+        if act in ("replace", "place"):
+            if act == "replace":
+                a, b = it["a"], it["b"]
+                slot = L.where(lay, a)
+                if not slot:
+                    return self._r("The %s panel isn't on screen, so there's nothing to replace. Try put the %s in the top left." % (T(a).lower(), T(b).lower()))
+                new = b
+            else:
+                new, slot = it["panel"], it["slot"]
+            lay2, displaced, swapped = L.place(lay, new, slot)
+            if lay2 == lay:
+                return self._r("The %s panel is already in the %s slot." % (T(new).lower(), L.SLOT_LABEL[slot]))
+            self._save_layout(lay2)
+            extra = (" The %s moved to the %s." % (T(displaced).lower(), L.SLOT_LABEL[L.where(lay2, displaced)])) if (swapped and displaced) else ((" The %s is off screen now." % T(displaced).lower()) if displaced else "")
+            return self._r("Done. The %s panel is in the %s slot.%s Say reset my layout to undo." % (T(new).lower(), L.SLOT_LABEL[slot], extra), changed)
+        return None
+
+    def _layout_set_slot(self, slot, value):
+        """From the Settings slot picker / registry: value = a panel id or 'empty'."""
+        lay = self._layout()
+        if value == "empty":
+            old = lay.get(slot)
+            lay[slot] = None
+            self._save_layout(lay)
+            return self._r("The %s slot is empty now." % L.SLOT_LABEL[slot], ["layout." + x for x in L.SLOTS])
+        return self._layout_exec(Intent(op="layout", act="place", panel=value, slot=slot))
 
     # ---- sports grammar
     def _sport_in(self, x):
@@ -558,6 +720,8 @@ class Settings:
                            "or what are my settings. Risky ones, like switching the AI, turning the microphone on or resetting, always ask you first.")
         if op == "sports":
             return await self._sports_exec(it)
+        if op == "layout":
+            return self._layout_exec(it)
         s = self.by_id(it["id"])
         if not s:
             return None
@@ -596,11 +760,23 @@ class Settings:
             return n
         if s.kind == "enum":
             vv = norm(v)
+            if s.id.startswith("layout."):
+                if vv in ("empty", "nothing", "none", "blank"):
+                    return "empty"
+                pid = L.panel_id(vv, panels_available(self.env))
+                if not pid:
+                    raise ValueError("I can use %s. Which one?" % say_list([L.title(p) for p in L.CATALOG if p in panels_available(self.env)]))
+                return pid
             if s.id == "ai.provider":
                 p = PROVIDER_WORDS.get(vv)
                 if not p:
                     raise ValueError("I know ChatGPT, Claude, Grok, OpenRouter and local models. Which one?")
                 return p
+            if s.id == "theme.skin":
+                vv = SKIN_WORDS.get(re.sub(r"\s*(?:skin|theme|colou?rs?)$", "", vv).strip(), "")
+                if not vv:
+                    raise ValueError("The skins are %s. Which one?" % say_list(SKINS))
+                return vv
             vv = re.sub(r"\s*voice$", "", vv)
             if s.id == "voice.speed":
                 vv = {"slow": "slow", "slowly": "slow", "slower": "slow", "normal": "normal", "medium": "normal", "fast": "fast", "quick": "fast", "faster": "fast"}.get(vv, vv)
@@ -624,6 +800,15 @@ class Settings:
             self._pref("conversation_on", bool(value))
             return self._r("Conversation mode is on. After I answer, I'll listen for your reply for %d seconds." % self.get(self.by_id("conversation.secs")) if value
                            else "Conversation mode is off. You'll need to press the mic or use the wake word each time.", ["conversation.on"])
+        if sid in PREF_BOOLS:
+            key, _d, on_msg, off_msg = PREF_BOOLS[sid]
+            self._pref(key, bool(value))
+            return self._r(on_msg if value else off_msg, [sid])
+        if sid == "addons.enabled":
+            await e.set_addons(bool(value))
+            return self._r("Add-on modules are on. New ones will still wait for your approval before they run." if value else "Add-on modules are off. Nothing optional will run. Say turn on add-on modules to bring them back.", [sid, "module.wake_word"] if not value else [sid])
+        if sid == "calendar.sources":
+            return self._r("Add calendar links in Settings. They're too long to say. To remove one, say remove the work calendar.")
         if sid == "conversation.secs":
             self._pref("conversation_secs", int(value))
             return self._r("Done. I'll wait %d seconds for your reply after I answer." % value, ["conversation.secs"])
@@ -644,6 +829,9 @@ class Settings:
             e.save({"tts": {"voice": VOICES[value]}})
             e.voice_changed()
             return self._r("Okay, I'll use the %s voice. The first time can take a moment while it downloads." % value, [sid])
+        if sid == "theme.skin":
+            self._pref("skin", value)
+            return self._r("Okay, switching to the %s skin." % value, [sid])
         if sid == "voice.speed":
             e.cfg.setdefault("tts", {})["length_scale"] = SPEEDS[value]
             e.save({"tts": {"length_scale": SPEEDS[value]}})
@@ -661,6 +849,10 @@ class Settings:
             f = next((f for f in e.features.describe() if f["id"] == fid), None)
             if not f or not f["installed"]:
                 return self._r("%s isn't available in this version." % s.title)
+            if value and f.get("status") == "needs_approval":
+                return self._r("%s is a new add-on that hasn't been checked yet, so I can't turn it on. I've opened its review - read what it does, then press Approve." % s.title, [], ui={"open": "modules", "module": fid})
+            if value and hasattr(e, "modules") and not e.modules.master_on():
+                return self._r("Add-on modules are switched off. Say turn on add-on modules first.")
             try:
                 await e.features.set_enabled(fid, bool(value))
             except Exception as err:  # noqa
@@ -676,19 +868,14 @@ class Settings:
             if fid == "wake_word":
                 return self._r("Wake word is off, so I can't hear \"Hey %s\" anymore. To turn it back on, use the mic button (push-to-talk), type it in chat, or switch it on in Settings, Features." % a, [sid])
             return self._r("%s is off." % s.title, [sid])
-        if sid.startswith("panel."):
-            hidden = [p for p in (e.cfg.get("prefs") or {}).get("panels_hidden", [])]
-            pid = sid[6:]
-            if value and pid in hidden:
-                hidden.remove(pid)
-            if not value and pid not in hidden:
-                hidden.append(pid)
-            self._pref("panels_hidden", hidden)
-            return self._r("The %s panel is %s." % (PANELS[pid][0].lower(), "back" if value else "hidden"), [sid])
+        if sid.startswith("layout.") and sid[7:] in L.SLOTS:
+            return self._layout_set_slot(sid[7:], value)
         return self._r("I can't change that one by voice yet.")
 
     async def _run_action(self, s, confirmed):
         e = self.env
+        if s.id == "layout.reset":
+            return self._layout_exec(Intent(op="layout", act="reset"))
         if s.id == "updates.check":
             st = await e.updater.check(force=True)
             st = e.updater.state()
@@ -725,13 +912,15 @@ class Settings:
             return "My name is %s." % v
         if s.id == "user.sports":
             return self._sports_text(v)
+        if s.id == "calendar.sources":
+            return ("You have %d calendar%s: %s." % (len(v), "" if len(v) == 1 else "s", say_list([c["name"] for c in v]))) if v else "No calendar is connected yet. Open Settings and add an .ics file or a calendar link."
         if s.id == "mute":
             return "I'm muted. I'll answer in text only." if v else "I'm not muted. I read my replies aloud."
         if s.id == "ai.provider":
             return "Your AI is %s." % v if v else "Your AI isn't connected yet."
+        if s.id.startswith("layout."):
+            return "The %s slot shows %s." % (L.SLOT_LABEL[s.id[7:]], ("the " + L.title(v).lower() + " panel") if v != "empty" else "nothing")
         if s.kind == "bool":
-            if s.id.startswith("panel."):
-                return "The %s is %s." % (t, "shown" if v else "hidden")
             return "%s is %s." % (s.title, "on" if v else "off")
         if s.kind == "int":
             return "%s is %d seconds." % (s.title, v)
@@ -761,8 +950,8 @@ class Settings:
         for s in self.registry():
             if s.id.startswith("module."):
                 bits.append("%s: %s" % (s.title.lower(), "on" if self.get(s) else "off"))
-        hid = (self.env.cfg.get("prefs") or {}).get("panels_hidden") or []
-        bits.append("hidden panels: " + (say_list(hid) if hid else "none"))
+        lay = self._layout()
+        bits.append("panel layout: " + (say_list(["%s %s" % (L.SLOT_LABEL[x], L.title(lay[x]).lower()) for x in L.SLOTS if lay.get(x)]) or "empty"))
         return "Here are your settings. " + "; ".join(bits) + "."
 
     # ---- sports execution

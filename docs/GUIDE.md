@@ -121,12 +121,49 @@ Off by default. Switch it on in **Settings -> Features -> Wake word** (you are a
 * **Limits:** English only (small model); it needs the ATLAS window open (it lives in the HUD, so ATLAS cannot hear you if the window is closed); a noisy room, a far-away mic or speakers playing loudly lower accuracy; CPU use is near zero in silence and roughly a quarter of one core while someone is talking.
 * **Files:** `bridge/modules/wake_word.py` (engine, model download, WebSocket `/api/m/wake_word/ws`, mute/aliases/status endpoints) and `wake_word.js` (microphone capture, speech gate, tone, Settings controls). Tests: `bridge/dev/test_wake.py`.
 
+## Panels, slots and skins
+The HUD has **six panel slots**. Each can show any panel: Time, Weather, Scanner, Sports, System, Hermes status, **Calendar**, **Daily brief** or **Reminders**. Panels you are not using wait on a shelf. Change them in **Settings -> Panel layout** (one picker per slot) or by voice: "replace the scanner with my calendar", "put the weather in the top left slot", "hide the system panel", "reset my layout". The layout is saved. ![Slot picker](settings-slot-picker.png)
+
+**Skins:** "change the skin to ember" (cyan - the original, ember, violet, emerald), or **Settings -> Look**. **Task animations:** the centre orb changes with what ATLAS is doing - thinking (orbiting comets), searching (radar sweep), weather (rays and rain), music (equaliser). "Turn off task animations" keeps one steady look. ![Skins](skins.png) ![Scenes](center-scenes.png)
+
+## Calendar
+Settings -> General -> **Calendars**: add a **file** (full path to an `.ics`) or a **secret link** (Google Calendar -> Settings -> your calendar -> *Secret address in iCal format*; Outlook -> *Publish calendar -> ICS*). No sign-in. Links must be `https://` and must not point at a private network address; the link is masked everywhere ATLAS shows it. Repeating events, all-day events and time zones are handled; the list is refreshed every 10 minutes. Ask "what's on my calendar" or "what's my next meeting". ![Calendar](panels-calendar-sports-brief.png)
+
+## Live sports scores
+The Sports panel shows live, final and upcoming games for the teams you follow (Settings -> Profile -> Sports). Scores come from ESPN's public scoreboard (`site.api.espn.com`): the request carries only the league and the date. Turn it off with "turn off live scores". Ask "what's the score", "did Juventus win".
+
+## Daily brief
+"Give me my brief" (or the **Daily brief** panel's **Read it to me** button) gives the weather, today's calendar, your teams' games and the reminders still to come. "Turn on the morning brief" makes ATLAS do it by itself the first time you open it each morning.
+
+## Reminders and timers
+Say it the way you would to a person:
+* "Remind me at 3 to call Mike" / "remind me tomorrow at 9 to send the report" / "remind me in 20 minutes to check the oven" / "at 6 pm remind me to pick up the kids".
+* "Set a 10 minute timer" / "timer for an hour and a half" / "set a timer for 90 seconds called pasta".
+* "What reminders do I have" / "what timers are running" / "how much time is left on my timer".
+* "Cancel the timer" / "cancel the reminder about Mike" / "cancel all reminders" (it asks you to say yes).
+If the time is missing ("remind me to call Mike") it asks; "at 9" means the next 9 o'clock. They are saved in `reminders.json` (survive a restart) and appear on the **Reminders** panel with a live countdown and a type-in box. When one is due ATLAS plays a chime and says it (Settings -> Reminder chime turns the chime off; mute silences the voice) - the **Done** button dismisses it. Alerts happen while the ATLAS window is open; one that came due while it was closed is delivered, marked as late, when you open it again. ![Reminders](reminders-panel.png)
+
+## Add-on modules - the safety model
+Optional extras live in `bridge/modules/` (shipped) and `<data dir>/modules/` (yours). Because they run with the same access ATLAS has, ATLAS treats them carefully:
+* **Master switch** - Settings -> Add-on modules (also "turn off add-on modules"). On by default; turning it off stops every add-on and asks first. Nothing optional runs while it is off.
+* **Plain-words risk notice** - shown on first run and whenever a new add-on appears: add-ons can read your files, use your accounts and delete things, so ATLAS never turns a new one on by itself. ![Notice](module-approval.png)
+* **Shipped modules** are trusted only while their files still match the SHA-256 list in `bridge/modules/MANIFEST.json` (written by `tools/build.py`; CI fails if it is stale). Anything else - a new drop-in, a shipped file that was edited, a module ATLAS wrote for you - is **pending** and is never imported until approved.
+* **Review:** a **red-flag scan** (deleting files, running commands, network access, reading secrets, hidden code...), then an **AI second opinion** from your own AI in a separate Hermes session (the code is passed as untrusted data; the answer is labelled *a second opinion, not a guarantee*). A high-risk scan result needs an extra explicit override. ![Risky](module-approval-risky.png)
+* **Approval is tied to the exact file contents.** Change one byte and it needs approving again. **Voice can open the review but can never approve.**
+* Modules ATLAS writes for you go through exactly the same steps.
+
+## Computer control (add-on)
+Shipped add-on `bridge/modules/computer_control.py` (code in `bridge/atlas_launch.py`). Switch it on in Settings -> Add-on modules (or "turn on computer control"; it asks to confirm).
+* "Open Steam", "launch Hades", "play Hollow Knight on Steam", "launch Fortnite on Epic", "open Discord". "What games do I have" and "rescan my games" work too.
+* **What it can open:** Steam games (found from `libraryfolders.vdf` and `appmanifest_*.acf`, opened with `steam://rungameid/<id>`), Epic Games (launcher manifests in ProgramData), programs from the Windows Start Menu (`.lnk`), apps in `/Applications`, `~/Applications` and `/System/Applications` on Mac. **Only things from that scan** - there is no way to run a command, a script, a file path or a web address through it, and no shell is used. It cannot close, move, delete or change anything.
+* **Names:** forgiving of small slips. If two fit ("star wars") it asks **which one**; if it is only guessing it asks "**Did you mean ...?**".
+* **Asks first by default:** "Open Hollow Knight? Say yes or no." Turn that off with "turn off launch confirmation" (Settings -> Add-on modules -> *Ask before opening apps and games*); guesses and ambiguity are always confirmed. ![Launch](launch-confirm.png)
+
 ## Feature modules
 `bridge/atlas_features.py` loads optional modules from `bridge/modules/<id>.py` (shipped) and `<data dir>/modules/<id>.py` (drop-ins that survive updates).
 Each module gets a `ctx` (settings, private data dir, `say`, `notify`, `ask` Hermes, `confirm` Yes/No dialog, `emit` events to the HUD) and may ship
 `<id>.js` to add a dock panel via `ATLAS.register(...)`. Settings toggles are in the HUD; state is saved in `config.json` under `features`.
-See `bridge/modules/_example.py`. `wake_word.py` is the reference module with a UI. Other catalogued ids (shown as "coming soon" until a module exists): `daily_brief`, `reminders`,
-`computer_control`, `gestures`, `telegram`. Missing pip packages of an enabled feature are installed from the HUD ("Install") or by re-running the installer.
+See `bridge/modules/_example.py`. `wake_word.py` is the reference module with a UI; `computer_control.py` is the reference module with a voice intent (`async def intent(ctx, text)`, optional `has_pending`/`reset`). Other catalogued ids (shown as "coming soon" until a module exists): `gestures`, `telegram`. The daily brief, calendar and reminders are built into ATLAS, not modules. Every module must pass the approval flow above before it is imported. Missing pip packages of an enabled feature are installed from the HUD ("Install") or by re-running the installer.
 
 ## Security notes
 * The bridge listens on **127.0.0.1 only** and rejects any request whose `Host`/`Origin` isn't `127.0.0.1:<port>` / `localhost:<port>`.

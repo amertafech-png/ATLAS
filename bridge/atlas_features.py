@@ -28,18 +28,14 @@ import time
 import uuid
 from pathlib import Path
 
-# Features planned for ATLAS.  They show up in Settings as "not installed yet" until a module file exists.
+# Optional add-on modules.  They show up in Settings as "not installed yet" until a module file exists.
+# (The daily brief, calendar and reminders are built into ATLAS itself, not add-ons.)
 CATALOG = {
     "wake_word": {"title": "Wake word",
                   "description": "Say \"Hey <name>\" to start talking, hands-free. Fully local (Vosk).",
                   "requirements": ["vosk"], "ui": True},
-    "daily_brief": {"title": "Daily brief",
-                    "description": "Weather, calendar, sports and news panel, built by Hermes on a schedule.",
-                    "requirements": [], "ui": True},
-    "reminders": {"title": "Reminders & timers",
-                  "description": "Set reminders and timers by voice; ATLAS speaks them when due.", "requirements": []},
     "computer_control": {"title": "Computer control",
-                         "description": "Open apps, play music, find files. Destructive actions always ask first.",
+                         "description": "Say \"open Steam\" or \"launch Hades\". Opens only apps and games found installed on this computer; asks first; cannot run commands or change files.",
                          "requirements": []},
     "gestures": {"title": "Hand gestures",
                  "description": "Wave / point / pinch controls from the webcam, own implementation.",
@@ -115,7 +111,9 @@ class Ctx:
 
 
 class Features:
-    def __init__(self, app_dir: Path, data_dir: Path, cfg: dict, ask, user_config_path: Path):
+    def __init__(self, app_dir: Path, data_dir: Path, cfg: dict, ask, user_config_path: Path, gate=None):
+        """gate (atlas_modules.Modules): decides which module files may be imported and run.  A module that is not allowed is never imported."""
+        self.gate = gate
         self.app_dir, self.data_dir, self.cfg = app_dir, data_dir, cfg
         self.ask, self.user_config_path = ask, user_config_path
         self.dirs = [app_dir / "modules", data_dir / "modules"]
@@ -157,13 +155,16 @@ class Features:
         return None
 
     def discover(self):
+        for fid in list(self.mods):
+            if fid not in self.running and not self.permitted(fid):
+                self.mods.pop(fid, None)               # master switch off, or the file changed since it was approved: forget the loaded copy
         ids = set(CATALOG)
         for d in self.dirs:
             if d.is_dir():
                 ids.update(p.stem for p in d.glob("*.py") if not p.name.startswith("_"))
         for fid in sorted(ids):
             p = self.find(fid)
-            if p and fid not in self.mods:
+            if p and fid not in self.mods and self.permitted(fid):
                 try:
                     self.mods[fid] = _load_file(p, fid)
                     self.errors.pop(fid, None)
@@ -171,11 +172,20 @@ class Features:
                     self.errors[fid] = f"{type(e).__name__}: {e}"
         self.ids = sorted(ids)
 
+    def permitted(self, fid):
+        """May this module's code be imported/run right now?  (master switch on, and shipped-and-unchanged or approved by the user)"""
+        return self.gate is None or (self.gate.master_on() and self.gate.allowed(fid))
+
+    def approval_state(self, fid):
+        return self.gate.state(fid) if self.gate else "trusted"
+
     def meta(self, fid):
         m = dict(CATALOG.get(fid, {}))
         mod = self.mods.get(fid)
         if mod and isinstance(getattr(mod, "META", None), dict):
             m.update(mod.META)
+        elif self.gate and self.find(fid):
+            m.update(self.gate.meta(fid))              # read from the file text without running it
         m.setdefault("title", fid)
         return m
 
@@ -183,12 +193,18 @@ class Features:
         out = []
         for fid in self.ids:
             m = self.meta(fid)
-            installed = fid in self.mods
-            missing = _missing(m.get("requirements")) if installed else []
+            has_file = self.find(fid) is not None
+            installed = fid in self.mods or has_file
+            ast_ = self.approval_state(fid) if has_file else "missing"
+            missing = _missing(m.get("requirements")) if fid in self.mods else []
             if fid in self.errors:
                 status = "error"
-            elif not installed:
+            elif not has_file:
                 status = "not_installed"
+            elif ast_ in ("pending", "changed", "rejected"):
+                status = "needs_approval"
+            elif not self.permitted(fid):
+                status = "addons_off"
             elif missing and self.enabled(fid):
                 status = "needs_install"
             elif fid in self.running:
@@ -197,13 +213,14 @@ class Features:
                 status = "off" if not self.enabled(fid) else "starting"
             out.append({"id": fid, "title": m["title"], "description": m.get("description", ""), "installed": installed,
                         "enabled": self.enabled(fid), "status": status, "missing": missing, "error": self.errors.get(fid, ""),
-                        "ui": bool(m.get("ui")) and bool(self.find(fid, ".js")), "consent": m.get("consent", ""), "settings": self.settings(fid)})
+                        "ui": bool(m.get("ui")) and bool(self.find(fid, ".js")) and self.permitted(fid), "consent": m.get("consent", ""), "settings": self.settings(fid),
+                        "approval": ast_})
         return out
 
     # ---- lifecycle ----
     async def start_one(self, fid):
         mod = self.mods.get(fid)
-        if not mod or fid in self.running:
+        if not mod or fid in self.running or not self.permitted(fid):
             return
         if _missing(self.meta(fid).get("requirements")):
             return
@@ -235,10 +252,65 @@ class Features:
             print(f"[bridge] feature '{fid}' stop error: {e}", flush=True)
         self.running.discard(fid)
 
+    async def master_changed(self):
+        """The add-ons master switch was flipped: stop everything, or load and start what is switched on."""
+        if self.gate and not self.gate.master_on():
+            await self.stop_all()
+        else:
+            self.discover()
+            await self.start_enabled()
+        self.emit("features", features=self.describe())
+
     async def start_enabled(self):
         for fid in self.ids:
             if self.enabled(fid):
                 await self.start_one(fid)
+
+    def pending_intent(self):
+        """True while an enabled module is waiting for the user's yes/no or choice by voice."""
+        for fid in list(self.running):
+            fn = getattr(self.mods.get(fid), "has_pending", None)
+            try:
+                if fn and fn(self.ctxs[fid]):
+                    return True
+            except Exception:  # noqa
+                pass
+        return False
+
+    def clear_pending_intent(self):
+        for fid in list(self.running):
+            fn = getattr(self.mods.get(fid), "reset", None)
+            try:
+                if fn:
+                    fn(self.ctxs[fid])
+            except Exception:  # noqa
+                pass
+
+    async def run_intents(self, text):
+        """Voice/chat requests an enabled module wants to answer (async def intent(ctx, text) -> {reply,...} | None).
+        A module that is waiting for a yes/no goes first."""
+        order = sorted(self.running, key=lambda f: 0 if self._has_pending(f) else 1)
+        for fid in order:
+            fn = getattr(self.mods.get(fid), "intent", None)
+            if not fn:
+                continue
+            try:
+                r = fn(self.ctxs[fid], text)
+                if asyncio.iscoroutine(r):
+                    r = await r
+            except Exception as e:  # noqa
+                print(f"[bridge] feature '{fid}' intent failed: {type(e).__name__}: {e}", flush=True)
+                continue
+            if r:
+                return r
+        return None
+
+    def _has_pending(self, fid):
+        fn = getattr(self.mods.get(fid), "has_pending", None)
+        try:
+            return bool(fn and fn(self.ctxs[fid]))
+        except Exception:  # noqa
+            return False
 
     async def stop_all(self):
         for fid in list(self.running):
@@ -247,6 +319,11 @@ class Features:
     async def set_enabled(self, fid, enabled, settings=None):
         if fid not in self.ids:
             raise KeyError(fid)
+        if enabled and self.gate and self.find(fid):
+            if not self.gate.master_on():
+                raise PermissionError("Add-on modules are switched off. Turn them on in Settings first.")
+            if not self.gate.allowed(fid):
+                raise PermissionError("This add-on is new and hasn't been approved yet. Review it in Settings, Add-on modules.")
         self.entry(fid)["enabled"] = bool(enabled)
         if settings is not None:
             self.entry(fid)["settings"] = dict(settings)

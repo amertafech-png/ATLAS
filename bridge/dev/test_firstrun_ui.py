@@ -30,7 +30,7 @@ try:
         check("about step has name/city/sports", pg.locator("#abcity").count() == 1 and "sports" in pg.inner_text("#setup").lower())
         pg.click("summary:has-text('Favorite sports')"); pg.wait_for_timeout(400)
         if SHOTS: pg.screenshot(path=str(DOCS / "installer-first-run-about.png"))
-        pg.click("[data-su=aboutsave]"); pg.wait_for_function("!document.querySelector('#setup.open')", timeout=10000)
+        pg.click("[data-su=aboutsave]"); pg.wait_for_selector("[data-su=addonson]"); pg.click("[data-su=addonson]"); pg.wait_for_function("!document.querySelector('#setup.open')", timeout=10000)
         check("profile saved", req("GET", "/api/profile")[1].get("profile", {}).get("name") == "Adam", req("GET", "/api/profile"))
         check("first-run marker cleared", not (e.data / "first-run").exists() and req("GET", "/api/health")[1]["setup"]["first_run"] is False)
         check("no page errors", not errs, errs)

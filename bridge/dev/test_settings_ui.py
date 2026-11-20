@@ -10,7 +10,7 @@ PY = "/workspace/bridge-venv/bin/python"; URL = "http://127.0.0.1:%d/" % BR_PORT
 
 e = Env("setui", env_text="OPENROUTER_API_KEY=placeholder-not-a-secret\n")
 mods = e.data / "modules"; mods.mkdir()
-for fid in ("computer_control", "daily_brief"):     # tiny drop-in modules so "turn on <module>" has something real to start
+for fid in ("computer_control", "sample_tool"):     # tiny drop-in modules so "turn on <module>" has something real to start
     (mods / (fid + ".py")).write_text('META={"title":"%s","description":"test module","requirements":[]}\nasync def start(ctx):\n    pass\nasync def stop(ctx):\n    pass\n' % fid.replace("_", " ").title())
 startup = Path(tempfile.mkdtemp(prefix="atlas-startup-"))
 e.env["ATLAS_PLATFORM"] = "windows"; e.env["ATLAS_STARTUP_DIR"] = str(startup)
@@ -21,6 +21,8 @@ def profile(): return get("/api/profile")["profile"]
 
 try:
     e.up()
+    for fid in ("computer_control", "sample_tool"):        # drop-ins are PENDING until approved: approve these two the way the HUD does (scan, second opinion, approve - without switching on)
+        req("GET", "/api/modules/%s/review" % fid); req("POST", "/api/modules/%s/opinion" % fid, {}); req("POST", "/api/modules/%s/approve" % fid, {"enable": False})
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path="/usr/bin/google-chrome", args=["--no-sandbox", "--autoplay-policy=no-user-gesture-required"])
         ctx = b.new_context(viewport={"width": 1600, "height": 900}); pg = ctx.new_page(); errs = []; pg.on("pageerror", lambda x: errs.append(str(x)))
@@ -56,10 +58,19 @@ try:
         m = chat("set my city to Dallas")
         check("'set my city to Dallas' answers (saved, or a friendly 'are you online' if the box has no internet)", ("Dallas" in reply(m)) or ("online" in reply(m)), reply(m))
         chat("change your name to ATLAS")
-        # ---- 4. panels
+        # ---- 4. panel slots (voice/chat)
+        vis = lambda sel: pg.evaluate("(s=>{const e=document.querySelector(s);return !!e&&e.offsetParent!==null})('%s')" % sel)
+        parent = lambda sel: pg.evaluate("document.querySelector('%s').parentElement.id" % sel)
         chat("hide the weather panel")
-        check("'hide the weather panel' hides the tile and persists", pg.evaluate("getComputedStyle(document.getElementById('t-weather')).display") == "none" and prefs()["panels_hidden"] == ["weather"])
-        chat("show the weather panel"); check("'show the weather panel'", pg.evaluate("getComputedStyle(document.getElementById('t-weather')).display") != "none" and prefs()["panels_hidden"] == [])
+        check("'hide the weather panel' empties its slot (tile gone, saved)", not vis("#t-weather") and prefs()["layout"]["L2"] is None)
+        chat("show the weather panel"); check("'show the weather panel' brings it back", vis("#t-weather") and prefs()["layout"]["L2"] == "weather")
+        m = chat("put sports where weather is")
+        check("'put sports where weather is' moves the real tiles (sports into the left column, weather to the right)", parent("#t-football") == "colL" and parent("#t-weather") == "colR" and prefs()["layout"]["L2"] == "sports", (reply(m), prefs()["layout"]))
+        check("...the reply says what changed", "sports" in reply(m).lower() and "reset my layout" in reply(m))
+        pg.reload(); pg.wait_for_function("window.__hud&&__hud.state().online===true"); pg.wait_for_timeout(1500); pg.evaluate("__hud.SU.dismissed=true;__hud.closeSetup()")
+        check("the layout persists across a reload", parent("#t-football") == "colL" and vis("#t-football"))
+        m = chat("what panels can I use"); check("'what panels can I use' answers locally", "You can use these panels" in reply(m), reply(m))
+        chat("reset my layout"); check("'reset my layout' restores it", parent("#t-football") == "colR" and parent("#t-weather") == "colL" and prefs()["layout"]["L2"] == "weather")
         # ---- 5. confirmations through the real chat endpoint
         m = chat("turn on computer control"); check("add-on ON asks first (nothing enabled yet)", "Say yes" in reply(m) and not any(f["enabled"] for f in get("/api/features")["features"] if f["id"] == "computer_control"), reply(m))
         chat("yes"); check("'yes' switches it on, the module really started", any(f["id"] == "computer_control" and f["enabled"] and f["status"] == "running" for f in get("/api/features")["features"]))
@@ -95,9 +106,13 @@ try:
         pg.click('[data-gset="mute"]'); pg.wait_for_timeout(500)
         pg.select_option('[data-gsel="voice.speed"]', "fast"); pg.wait_for_timeout(500)
         check("General tab: speed select -> bridge", get("/api/settings")["settings"] and next(s for s in get("/api/settings")["settings"] if s["id"] == "voice.speed")["value"] == "fast")
-        pg.click('[data-gset="panel.system"]'); pg.wait_for_timeout(500)
-        check("General tab: hide the System panel", pg.evaluate("getComputedStyle(document.getElementById('t-system')).display") == "none")
-        pg.click('[data-gset="panel.system"]'); pg.wait_for_timeout(300)
+        pg.select_option('[data-gsel="layout.L3"]', "sports"); pg.wait_for_timeout(600)
+        check("General tab slot picker: bottom-left = sports swaps the tiles", prefs()["layout"]["L3"] == "sports" and prefs()["layout"]["R1"] == "scanner" and pg.evaluate("document.querySelector('#t-football').parentElement.id") == "colL")
+        pg.select_option('[data-gsel="layout.R2"]', "empty"); pg.wait_for_timeout(500)
+        check("slot picker 'empty' leaves the slot empty", prefs()["layout"]["R2"] is None and not vis("#t-system"))
+        if SHOTS: pg.wait_for_selector('[data-gsel="layout.L1"]'); pg.evaluate("document.querySelector('[data-gsel=\"layout.L1\"]').scrollIntoView()"); pg.wait_for_timeout(300); pg.screenshot(path=str(DOCS / "settings-slot-picker.png"))
+        pg.click('[data-gact="layout.reset"]'); pg.wait_for_timeout(600)
+        check("General tab 'Reset' restores the layout", prefs()["layout"] == {"L1": "clock", "L2": "weather", "L3": "scanner", "R1": "sports", "R2": "system", "R3": "hermes"})
         pg.click('[data-gact="updates.check"]'); pg.wait_for_function("document.getElementById('gmsg').textContent.length>0", timeout=15000)
         check("General tab: 'Check now' reports", True)
 
