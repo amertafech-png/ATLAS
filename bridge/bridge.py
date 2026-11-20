@@ -116,7 +116,10 @@ def system_prompt():
         f"If asked your name, it is {me}. "
         "Be warm, sharp and concise: normally one to three short spoken sentences. Plain text only - no markdown, "
         "no bullet lists, no emojis - unless the user explicitly asks for detail. Messages may come from voice "
-        "transcription, so be forgiving of small mis-hearings. If a webcam image is attached, it is a live frame from their desk."
+        "transcription, so be forgiving of small mis-hearings. If a webcam image is attached, it is a live frame from their desk. "
+        "Calendar: ATLAS reads the user's calendar itself and adds the relevant events to the message as [ATLAS calendar]; answer from those events only. "
+        "Never use your own Google/Microsoft calendar connectors or skills for it, never ask the user to sign in or paste OAuth links for the calendar, "
+        "and never search the user's files or folders for credentials, tokens or client secrets."
     )
 
 
@@ -142,9 +145,8 @@ def migrate_legacy_config():  # legacy-modi
     a = cur["assistant"]
     name, phrase = str(a.get("name") or "").strip(), str(a.get("wake_phrase") or "").strip()
     if name.lower() == "modi" or (not name and phrase.lower() == "hey modi"):   # legacy-modi
-        cur["assistant"] = {"name": ASSISTANT_DEFAULT, "wake_phrase": "Hey " + ASSISTANT_DEFAULT}
         try:
-            f.write_text(json.dumps(cur, indent=2), encoding="utf-8")
+            atlas_cfgio.update_config(f, lambda c: c.update({"assistant": {"name": ASSISTANT_DEFAULT, "wake_phrase": "Hey " + ASSISTANT_DEFAULT}}))
             print("[bridge] migrated the default assistant name MODI -> ATLAS", flush=True)   # legacy-modi
         except OSError:
             pass
@@ -173,6 +175,7 @@ def load_config():
 
 CFG = load_config()
 
+import atlas_cfgio  # noqa: E402  (atomic, merge-safe config.json writes)
 import atlas_browser  # noqa: E402  (links open in the user's default browser)
 import atlas_calendar  # noqa: E402  (calendar panel: local .ics files and secret links)
 import atlas_features  # noqa: E402  (feature framework, see atlas_features.py)
@@ -260,13 +263,8 @@ def clean_sports(sports):
 
 
 def save_user_config(patch):
-    f = DATA_DIR / "config.json"
-    try:
-        cur = json.loads(f.read_text(encoding="utf-8-sig")) if f.exists() else {}
-    except Exception:
-        cur = {}
-    deep_merge(cur, patch)
-    f.write_text(json.dumps(cur, indent=2), encoding="utf-8")
+    """Merge `patch` into the per-user config.json: atomic, one writer at a time, never starts from {} on a read error."""
+    atlas_cfgio.update_config(DATA_DIR / "config.json", lambda cur: deep_merge(cur, copy.deepcopy(patch)))
 
 
 def update_profile(body, resolve=True):
@@ -866,6 +864,84 @@ async def h_quit(request):
     return web.json_response({"ok": True})
 
 
+_CLIENT_ERR = {"n": 0, "t0": 0.0}
+
+
+async def h_client_error(request):
+    """The HUD reports its own script errors here (v1.4.3) so they end up in bridge.log. Rate-limited, nothing is sent anywhere else."""
+    now = time.time()
+    if now - _CLIENT_ERR["t0"] > 600:
+        _CLIENT_ERR.update(n=0, t0=now)
+    _CLIENT_ERR["n"] += 1
+    if _CLIENT_ERR["n"] > 60:
+        return web.json_response({"ok": True, "logged": False})
+    try:
+        b = await request.json()
+    except Exception:  # noqa
+        b = {}
+    if not isinstance(b, dict):
+        b = {}
+    clip = lambda k, n: re.sub(r"[\x00-\x1f]+", " ", str(b.get(k) or ""))[:n]   # noqa: E731
+    stack = " | ".join(x.strip() for x in str(b.get("stack") or "").splitlines()[:4])[:600]
+    print("[hud] script error (%s, %s): %s  at %s:%s:%s  window %sx%s  %s%s" % (clip("phase", 20), clip("kind", 30), clip("message", 400), clip("source", 160).rsplit("/", 1)[-1] or "page",
+          clip("line", 8), clip("col", 8), clip("w", 6), clip("h", 6), clip("ua", 120), ("\n[hud]   stack: " + stack) if stack else ""), flush=True)
+    return web.json_response({"ok": True, "logged": True})
+
+
+def reset_layout():
+    """Every panel back in its default slot (also used by the HUD's Reset button and 'reset ATLAS')."""
+    prefs = CFG.setdefault("prefs", {})
+    prefs.pop("layout", None)
+    prefs.pop("panels_hidden", None)
+
+    def change(cur):
+        p = cur.get("prefs")
+        if isinstance(p, dict):
+            p.pop("layout", None)
+            p.pop("panels_hidden", None)
+    atlas_cfgio.update_config(DATA_DIR / "config.json", change)
+
+
+async def h_layout_reset(request):
+    await asyncio.get_running_loop().run_in_executor(None, reset_layout)
+    print("[bridge] panel layout reset to the default", flush=True)
+    return web.json_response({"ok": True, "prefs": SETTINGS.prefs_view()})
+
+
+def _respawn_bridge():
+    """Start a fresh bridge (same Python, same script) that waits for this one to let go of the port, then exit this one."""
+    logs = DATA_DIR / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    out = open(logs / "bridge.log", "a", encoding="utf-8")
+    err = open(logs / "bridge.err.log", "a", encoding="utf-8")
+    flags = atlas_hermes._flags(detached=True, breakaway=True)
+    cmd = [sys.executable, str(Path(__file__).resolve()), "--after-restart"]
+    try:
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=err, cwd=str(HERE), **flags)
+    except OSError:
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=err, cwd=str(HERE), **atlas_hermes._flags(detached=True))
+
+
+async def h_restart(request):
+    """Restart ATLAS services: the Hermes gateway, then this bridge (a new copy takes over the port). The HUD reloads when /api/health answers."""
+    async def run():
+        loop = asyncio.get_running_loop()
+        print("[bridge] restart requested from the HUD - restarting Hermes and the bridge", flush=True)
+        if os.environ.get("ATLAS_NO_BOOT") != "1" and HM.find_cli():
+            try:
+                await asyncio.wait_for(loop.run_in_executor(None, lambda: HM.start_gateway(restart=True)), 75)
+            except Exception as e:  # noqa
+                print(f"[bridge] Hermes restart: {type(e).__name__}", flush=True)
+        await loop.run_in_executor(None, _respawn_bridge)
+        await asyncio.sleep(0.3)
+
+        def _exit():
+            raise web.GracefulExit()
+        loop.call_soon(_exit)
+    asyncio.ensure_future(run())
+    return web.json_response({"ok": True})
+
+
 async def h_open_url(request):
     """Open an http(s) link from the HUD in the user's DEFAULT browser (the HUD window itself is an Edge/Chrome app window)."""
     try:
@@ -1074,8 +1150,15 @@ async def h_chat(request):
         return web.json_response({"ok": True, "reply": local["reply"], "ms": int((time.time() - t0) * 1000), "session_id": STATE["session_id"],
                                   "local": True, "changed": local["changed"], "ui": local["ui"], "pending": local["pending"], "brief": local.get("brief"),
                                   "prefs": SETTINGS.prefs_view(), "profile": CFG.get("profile") or {}, "assistant": CFG.get("assistant")})
+    ask = text
+    if atlas_info.is_calendar_topic(text):     # calendar questions ATLAS didn't answer itself: Hermes gets ATLAS's events and the rule not to go looking itself
+        try:
+            ctx = await asyncio.get_running_loop().run_in_executor(None, INFO.calendar_context, text)
+            ask = text + "\n\n" + ctx
+        except Exception as e:  # noqa
+            print("[bridge] calendar context failed:", type(e).__name__, flush=True)
     try:
-        reply = await hermes_text(text)
+        reply = await hermes_text(ask)
     except HermesError as e:
         return web.json_response({"ok": False, "error": str(e), "fix": e.fix}, status=e.status)
     add_history("assistant", reply)
@@ -1414,17 +1497,13 @@ class SettingsEnv:
                 "It asks whether to keep your notes and settings. I haven't deleted anything.")
 
     def reset(self):
-        f = DATA_DIR / "config.json"
-        try:
-            cur = json.loads(f.read_text(encoding="utf-8-sig")) if f.exists() else {}
-        except Exception:
-            cur = {}
-        for k in ("profile", "prefs", "assistant"):
-            cur.pop(k, None)
-        if isinstance(cur.get("tts"), dict):
-            for k in ("voice", "length_scale"):
-                cur["tts"].pop(k, None)
-        f.write_text(json.dumps(cur, indent=2), encoding="utf-8")
+        def change(cur):
+            for k in ("profile", "prefs", "assistant"):
+                cur.pop(k, None)
+            if isinstance(cur.get("tts"), dict):
+                for k in ("voice", "length_scale"):
+                    cur["tts"].pop(k, None)
+        atlas_cfgio.update_config(DATA_DIR / "config.json", change)
         CFG["profile"] = copy.deepcopy(DEFAULTS["profile"])
         CFG["assistant"] = copy.deepcopy(DEFAULTS["assistant"])
         CFG["prefs"] = {}
@@ -1660,7 +1739,7 @@ def make_app():
     app.add_routes([
         web.get("/", h_index), web.get("/index.html", h_index),
         web.get("/favicon.ico", h_icon), web.get("/atlas.ico", h_icon), web.get("/atlas.png", h_icon_png), web.get("/atlas-{size:192|512}.png", h_icon_size), web.get("/manifest.webmanifest", h_manifest),
-        web.post("/api/quit", h_quit), web.post("/api/open-url", h_open_url),
+        web.post("/api/quit", h_quit), web.post("/api/open-url", h_open_url), web.post("/api/client-error", h_client_error), web.post("/api/layout/reset", h_layout_reset), web.post("/api/restart", h_restart),
         web.get("/api/health", h_health), web.get("/api/system", h_system),
         web.get("/api/history", h_history), web.post("/api/new", h_new),
         web.post("/api/chat", h_chat), web.post("/api/listen", h_listen),
@@ -1808,6 +1887,15 @@ def main():
         sys.exit(0)
     load_state()
     host, port = CFG["host"], CFG["port"]
+    if "--after-restart" in sys.argv:        # started by /api/restart: wait (up to 30 s) for the old bridge to free the port
+        import socket
+        for _ in range(60):
+            with socket.socket() as so:
+                try:
+                    so.bind(("127.0.0.1", port))
+                    break
+                except OSError:
+                    time.sleep(0.5)
     if host not in ("127.0.0.1", "localhost"):
         print("[bridge] Refusing to bind anything but 127.0.0.1 (the Hermes API can run commands).", flush=True)
         host = "127.0.0.1"

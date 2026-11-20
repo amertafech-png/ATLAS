@@ -94,12 +94,8 @@ class Updater:
 
     def set_enabled(self, on):
         self.ucfg["enabled"] = bool(on)
-        try:
-            cur = json.loads(self.user_config_path.read_text(encoding="utf-8-sig")) if self.user_config_path.exists() else {}
-        except Exception:
-            cur = {}
-        cur.setdefault("update", {})["enabled"] = bool(on)
-        self.user_config_path.write_text(json.dumps(cur, indent=2), encoding="utf-8")
+        import atlas_cfgio
+        atlas_cfgio.update_config(self.user_config_path, lambda cur: cur.setdefault("update", {}).__setitem__("enabled", bool(on)))
 
     # ---- cache ----
     def _load_cache(self):

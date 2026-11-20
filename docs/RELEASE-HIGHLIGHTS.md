@@ -1,3 +1,13 @@
+## ATLAS 1.4.3
+
+**Fixes: panels no longer disappear after a long answer, calendar questions use ATLAS's own calendar, and there is always a way to reset the screen.**
+
+- **Panels stay on screen.** A reply containing one very long web address (such as a Google sign-in link) made the middle of the screen as wide as the link, pushing the right-hand panels, the orb and the bottom bar off screen - and it came back after a reload because the last answer is shown again. The layout now keeps its shape whatever the reply, and long links are shown shortened (the full link is still behind it in the chat).
+- **Calendar questions use ATLAS's calendar.** "Check last week's calendar", "what meetings did I have yesterday", "am I busy on Friday", "what's on my schedule next week" are answered straight from the calendar in **Settings -> Calendar** (past ranges such as yesterday, last week, last weekend, last month and "last Tuesday" now work). "Reconnect my calendar" explains that it is already connected - no Google sign-in. Other calendar questions go to your AI together with the events from ATLAS, with instructions not to use its own Google connectors and never to search your files for passwords or keys. If no calendar is set up, ATLAS points you to Settings -> Calendar.
+- **Reset, always within reach.** A **Reset** button next to the ATLAS title (also **Ctrl+Shift+R**, or say "reset ATLAS" / "reload the screen" - works even if Hermes is down) offers **Reload screen** and **Reset layout to default** (your calendar, profile and skin are kept). **Settings -> Reset** has the same plus **Restart ATLAS services** (the bridge and Hermes).
+- **A broken part can't take down the whole screen.** Each part of the screen now starts separately; if one fails, the rest still loads and a banner offers **Reload**. Screen errors are written to `bridge.log` so they can be diagnosed.
+- **Safer settings saves.** The settings file is now written in one step (never half-written) and changes are merged, so two saves at once can't wipe each other out. An unreadable settings file is kept aside instead of being overwritten.
+
 ## ATLAS 1.4.2
 
 **Fixes: no more Microsoft Edge "we are now syncing your browsing data" popup, and no console window behind the installer.**

@@ -38,6 +38,12 @@ DTSTART;TZID=America/Chicago:20261123T180000
 DTEND;TZID=America/Chicago:20261123T190000
 SUMMARY:Dinner with Mike
 END:VEVENT
+BEGIN:VEVENT
+UID:5
+DTSTART;TZID=America/Chicago:20261111T150000
+DTEND;TZID=America/Chicago:20261111T160000
+SUMMARY:Board review
+END:VEVENT
 END:VCALENDAR
 """
 def esp(eid, home, away, hs, as_, state, detail="", date="2026-11-20T01:00Z", completed=False):
@@ -138,5 +144,30 @@ def down(url, timeout=8): raise OSError("offline")
 e = Env(); e.scores = SC.Scores(down, lambda: 1000.0)
 check("ESPN down: plain message, no crash", "unavailable right now" in ask(e, "what are the scores")["reply"], ask(e, "what are the scores")["reply"])
 check("a normal question is not intercepted", ask(Env(), "tell me a story") is None)
+# ---- v1.4.3: everyday calendar questions answered from ATLAS's own calendar
+for t, lab in [("check last week's calendar", "last week"), ("can you check last week's calendar", None), ("what meetings did I have last week", "last week"),
+               ("what was on my calendar yesterday", "yesterday"), ("check my calendar for last week", "last week"), ("what events do I have next week", "next week"),
+               ("am I busy on friday", "on Friday"), ("what's on my schedule last tuesday", "last Tuesday"), ("show me my agenda this month", "this month")]:
+    p = parse(t)
+    check("v143 parse %r" % t, p and p["op"] == "calendar" and (lab is None or (p.get("range") or [0, 0, ""])[2] == lab), p)
+r = ask(Env(), "check last week's calendar")["reply"]
+check("v143 last week answered with past tense + event", "you had 1 event" in r and "Board review at 3 PM" in r and "Wednesday Nov 11" in r, r)
+r = ask(Env(), "what was on my calendar yesterday")["reply"]
+check("v143 empty past range", r == "There was nothing on your calendar yesterday.", r)
+r = ask(Env(with_cal=False), "check last week's calendar")["reply"]
+check("v143 no calendar -> Settings > Calendar", "Settings" in r and "Calendar" in r, r)
+for t in ["reconnect my calendar", "can you reconnect my google calendar", "connect my calendar", "my calendar is not connected"]:
+    check("v143 connect intent %r" % t, (parse(t) or {}).get("op") == "calendar_connect", parse(t))
+r = ask(Env(), "reconnect my google calendar")["reply"]
+check("v143 reconnect says already connected, no google sign-in", "already connected" in r and "Home" in r and "Settings" in r, r)
+r = ask(Env(with_cal=False), "connect my calendar")["reply"]
+check("v143 connect w/o source -> Settings", "Settings, then Calendar" in r, r)
+for t in ["add a meeting with Bob tomorrow at 3", "why did my calendar say not connected", "what is a calendar", "open the calendar settings"]:
+    check("v143 not answered locally %r" % t, (parse(t) or {}).get("op") != "calendar", parse(t))
+check("v143 topic detection", I.is_calendar_topic("add a meeting with Bob tomorrow") and I.is_calendar_topic("Summarize my schedule for last week") and not I.is_calendar_topic("tell me a joke") and not I.is_calendar_topic("open the calendar settings"))
+ctx = I.Info(Env()).calendar_context("summarize the meetings I had last week and what they were about")
+check("v143 context has events + rule", "[ATLAS calendar]" in ctx and "Board review" in ctx and "Do not use Google" in ctx and "never search the user's files for credentials" in ctx, ctx)
+ctx = I.Info(Env(with_cal=False)).calendar_context("what's on my schedule")
+check("v143 context without calendar", "No calendar is connected" in ctx and "Settings, then Calendar" in ctx, ctx)
 print("FAILED: %s" % fails if fails else "ALL PASSED")
 sys.exit(1 if fails else 0)

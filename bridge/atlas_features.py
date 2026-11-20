@@ -135,12 +135,9 @@ class Features:
         return json.loads(json.dumps({k: v for k, v in self.cfg.items() if k != "hermes"}))
 
     def _persist(self):
-        try:
-            cur = json.loads(self.user_config_path.read_text(encoding="utf-8-sig")) if self.user_config_path.exists() else {}
-        except Exception:
-            cur = {}
-        cur["features"] = self.cfg.get("features", {})
-        self.user_config_path.write_text(json.dumps(cur, indent=2), encoding="utf-8")
+        import atlas_cfgio
+        feats = json.loads(json.dumps(self.cfg.get("features", {})))
+        atlas_cfgio.update_config(self.user_config_path, lambda cur: cur.update({"features": feats}))
 
     def set_settings(self, fid, new):
         self.entry(fid)["settings"] = dict(new)
