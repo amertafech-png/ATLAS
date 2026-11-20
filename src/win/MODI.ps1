@@ -1,5 +1,6 @@
-<#  MODI launcher (Windows).  Used by the MODI shortcuts via MODI.vbs.
-      -Mode Launch  (default) start the bridge hidden if needed, wait for /api/health, open the app window
+<#  MODI launcher (Windows).  The MODI shortcuts run this file with powershell.exe directly (no Windows Script Host).
+      -Mode Launch  (default) start the bridge hidden if needed (never a second one), wait for /api/health,
+                    then open the app window - or bring it to the front if it is already open
       -Mode Bridge  start only the bridge
       -Mode Stop    stop the bridge
     The app window is Microsoft Edge (or Chrome) in "app mode": no tabs, no address bar.  #>
@@ -41,6 +42,43 @@ function Start-ModiBridge {
     Show-Msg "MODI's bridge did not start.`n`n$tail`n`nLogs: $Logs"
     return $false
 }
+function Get-AppWindowPid([string]$appdata) {
+    # the browser's main process for MODI's private profile folder (the one that owns the visible window)
+    try {
+        $procs = Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe'" -ErrorAction Stop
+        foreach ($p in $procs) {
+            $cl = [string]$p.CommandLine
+            if ($cl.Contains($appdata) -and -not $cl.Contains('--type=')) {
+                $gp = Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue
+                if ($gp -and $gp.MainWindowHandle -ne [IntPtr]::Zero) { return $gp }
+            }
+        }
+    } catch { }
+    return $null
+}
+function Show-ExistingWindow([string]$appdata) {
+    $gp = Get-AppWindowPid $appdata
+    if (-not $gp) { return $false }
+    try {
+        if (-not ('ModiWin' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class ModiWin {
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+}
+'@
+        }
+        $h = $gp.MainWindowHandle
+        if ([ModiWin]::IsIconic($h)) { [void][ModiWin]::ShowWindow($h, 9) }   # SW_RESTORE
+        [void][ModiWin]::SetForegroundWindow($h)
+        return $true
+    } catch {
+        try { Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.Interaction]::AppActivate($gp.Id); return $true } catch { return $false }
+    }
+}
 function Find-Browser {
     $cands = @()
     foreach ($exe in @('msedge.exe', 'chrome.exe')) {
@@ -65,12 +103,24 @@ switch ($Mode) {
                 ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
         }
     }
-    'Bridge' { [void](Start-ModiBridge) }
+    'Bridge' {                                                      # used by "start at login"
+        $mutex = New-Object System.Threading.Mutex($false, 'Local\MODI-Launcher')
+        $held = $false
+        try { $held = $mutex.WaitOne(150000) } catch [System.Threading.AbandonedMutexException] { $held = $true }
+        try { [void](Start-ModiBridge) } finally { if ($held) { try { $mutex.ReleaseMutex() } catch { } } }
+    }
     default {
-        if (-not (Start-ModiBridge)) { exit 1 }
+        $appdata = Join-Path $Data 'appdata'
+        # one launch at a time: a second double-click waits here instead of starting a duplicate bridge or window
+        $mutex = New-Object System.Threading.Mutex($false, 'Local\MODI-Launcher')
+        $held = $false
+        try { $held = $mutex.WaitOne(150000) } catch [System.Threading.AbandonedMutexException] { $held = $true }
+        try {
+            if (-not (Start-ModiBridge)) { exit 1 }
+            if (Show-ExistingWindow $appdata) { exit 0 }
+        } finally { if ($held) { try { $mutex.ReleaseMutex() } catch { } } }
         $browser = Find-Browser
         if ($browser) {
-            $appdata = Join-Path $Data 'appdata'
             New-Item -ItemType Directory -Force -Path $appdata | Out-Null
             $appArgs = @("--app=$Url", "--user-data-dir=`"$appdata`"", '--window-size=1600,900', '--no-first-run',
                       '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required')

@@ -360,6 +360,38 @@ body.wake-flash #orb{filter:drop-shadow(0 0 26px var(--c)) brightness(1.2)}
 .wkrow input{flex:1;min-width:10vw;background:rgba(2,12,26,.7);border:1px solid var(--faint);color:#e6fbff;padding:.35vh .6vw;font-family:var(--mono)}
 .wkphrase{color:var(--c);letter-spacing:.1em}.wkon{color:var(--ok)}
 .wkbar{flex:1;height:6px;border:1px solid var(--faint);min-width:12vw}.wkbar i{display:block;height:100%;background:var(--c);transition:width .3s}
+
+/* ---- setup wizard: connect Hermes + sign in to an AI ---- */
+.setup{position:fixed;inset:0;z-index:70;display:none;place-items:center;background:rgba(1,6,14,.72)}
+.setup.open{display:grid}
+.setup .box{width:min(760px,92vw);max-height:90vh;overflow:auto;padding:2.6vh 2.2vw;background:rgba(3,16,32,.97);border:1px solid var(--c);box-shadow:0 0 34px rgba(53,224,255,.3)}
+.setup h4{margin:0 0 .6vh;font-family:var(--mono);letter-spacing:.22em;color:var(--c);font-size:clamp(12px,.95vw,18px);font-weight:600}
+.setup .sub{color:var(--dim);font-size:clamp(11px,.8vw,15px);line-height:1.45;margin-bottom:1.6vh}
+.setup p{margin:0 0 1.4vh;color:#e6fbff;line-height:1.5;font-size:clamp(12px,.85vw,16px)}
+.setup .crumbs{display:flex;gap:.8vw;margin-bottom:1.6vh;font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;font-size:clamp(9px,.64vw,12px);color:var(--dim)}
+.setup .crumbs span.on{color:var(--c)}.setup .crumbs span.done{color:var(--ok)}
+.setup .checks{margin:1.2vh 0 1.6vh;display:flex;flex-direction:column;gap:.7vh}
+.setup .ck{display:flex;gap:.8vw;align-items:center;font-family:var(--mono);font-size:clamp(11px,.8vw,15px);color:var(--dim)}
+.setup .ck i{font-style:normal;width:1.4em;text-align:center;color:var(--dim)}
+.setup .ck.run{color:#e6fbff}.setup .ck.run i{color:var(--c);animation:blink 1s infinite}
+.setup .ck.ok{color:#d8f6ff}.setup .ck.ok i{color:var(--ok)}
+.setup .ck.fail{color:var(--warn)}.setup .ck.fail i{color:var(--warn)}
+.setup .row{display:flex;gap:1vw;align-items:center;flex-wrap:wrap;margin-top:1.4vh}
+.setup .err{padding:1vh 1vw;border:1px solid rgba(255,179,71,.55);color:var(--warn);background:rgba(255,179,71,.07);margin:1vh 0;font-size:clamp(11px,.8vw,15px);line-height:1.4}
+.setup .okmsg{padding:1vh 1vw;border:1px solid rgba(93,255,176,.5);color:var(--ok);background:rgba(93,255,176,.06);margin:1vh 0;font-size:clamp(11px,.8vw,15px)}
+.setup .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.8vw;margin:1vh 0 1.4vh}
+.setup .tile{all:unset;box-sizing:border-box;cursor:pointer;padding:1.2vh .8vw;border:1px solid var(--faint);text-align:center;font-family:var(--mono);letter-spacing:.1em;font-size:clamp(11px,.8vw,15px);color:#d8f6ff;line-height:1.35}
+.setup .tile small{display:block;color:var(--dim);letter-spacing:.04em;font-size:.78em;margin-top:.3vh}
+.setup .tile:hover{border-color:var(--c3)}.setup .tile.sel{border-color:var(--c);background:rgba(53,224,255,.16);box-shadow:0 0 12px rgba(53,224,255,.3)}
+.setup input[type=text],.setup input[type=password],.setup select{background:rgba(2,12,26,.8);border:1px solid var(--faint);color:#e6fbff;padding:.6vh .8vw;font-family:var(--mono);font-size:clamp(11px,.85vw,15px);min-width:16vw;flex:1}
+.setup input:focus,.setup select:focus{outline:0;border-color:var(--c)}
+.setup a{color:var(--c3)}
+.setup details{margin-top:1vh;color:var(--dim);font-size:clamp(10px,.72vw,13px)}
+.setup .linkbox{padding:1vh 1vw;border:1px dashed var(--c);margin:1vh 0;font-family:var(--mono);color:#e6fbff;line-height:1.6;word-break:break-all}
+.setup .code{font-size:1.6em;letter-spacing:.3em;color:var(--c)}
+.setup .bar{height:6px;background:rgba(53,224,255,.15);margin:1vh 0}.setup .bar i{display:block;height:100%;background:var(--c);box-shadow:0 0 8px var(--c)}
+.setup .logt{font-family:var(--mono);font-size:clamp(9px,.66vw,12px);color:var(--dim);margin-top:1vh;max-height:9vh;overflow:hidden;white-space:pre-wrap}
+.fixchip{cursor:pointer;text-decoration:underline}
 </style>
 </head>
 <body>
@@ -468,6 +500,7 @@ body.wake-flash #orb{filter:drop-shadow(0 0 26px var(--c)) brightness(1.2)}
 </div>
 
 <div class="stopped" id="stopped"><div><span class="aname">MODI</span> has stopped<br><span style="color:var(--dim);font-size:.7em">Close this window · relaunch from the MODI shortcut</span></div></div>
+<div class="setup" id="setup"><div class="box" id="setupbox"></div></div>
 <div class="cfm" id="cfm"><div class="box"><h4 id="cfmt">CONFIRM ACTION</h4><p id="cfmp"></p><div class="row"><button class="btn" id="cfmno">Cancel</button><button class="btn sel" id="cfmyes">Allow</button></div></div></div>
 <div class="ov" id="ov" role="dialog" aria-modal="false"><div class="oh"><span id="ovt">Module</span><button class="x" id="ovx" aria-label="Close">✕</button></div><div class="ob" id="ovb"></div></div>
 <script>
@@ -877,7 +910,7 @@ async function api(path,opts){
   if(!isHttp)throw new Error('Open the HUD via the bridge: http://127.0.0.1:8765');
   const r=await fetch(path,opts);
   let j=null;try{j=await r.json()}catch(e){}
-  if(!r.ok||(j&&j.ok===false))throw new Error((j&&j.error)||('HTTP '+r.status));
+  if(!r.ok||(j&&j.ok===false)){const er=new Error((j&&j.error)||('HTTP '+r.status));if(j&&j.fix)er.fix=j.fix;throw er}
   return j;
 }
 const post=(p,o)=>api(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o)});
@@ -958,6 +991,7 @@ async function askHermes(text,opt){
     if(opt.speak!==false&&speakOn)await speak(r.reply);else setOrb('idle');
   }catch(e){
     addMsg('assistant',e.message,{error:true});setCaption('ERROR',e.message,true);log('Hermes error · '+e.message.slice(0,60));setOrb('idle');
+    if(e.fix==='setup')openSetup();
   }
 }
 
@@ -1081,12 +1115,13 @@ pwrB.addEventListener('click',async()=>{
 /* ---- bridge health + system polling ---- */
 const bdot=document.getElementById('bdot'),btxt=document.getElementById('btxt'),pttTag=document.getElementById('ptt');
 let lastBR='';
+document.getElementById('bridgechip').addEventListener('click',()=>{if(BR.fix)openSetup()});document.getElementById('hmtag').addEventListener('click',()=>{if(BR.fix)openSetup()});
 function applyHealth(h){
-  const was=BR.online;BR.online=!!h;BR.health=h;if(h&&h.assistant)applyAssistant(h.assistant);if(h&&h.profile)applyProfile(h.profile);BR.hermes=!!(h&&h.hermes&&h.hermes.reachable);
+  const was=BR.online;BR.online=!!h;BR.health=h;if(h&&h.assistant)applyAssistant(h.assistant);if(h&&h.profile)applyProfile(h.profile);BR.hermes=!!(h&&h.hermes&&h.hermes.reachable);BR.setup=(h&&h.setup)||null;BR.fix=!!(h&&h.setup&&h.setup.state!=='ready'&&h.mode!=='cli');
   const key=!h?'off':BR.hermes?'ok':'nohermes';
   if(key!==lastBR){
     lastBR=key;
-    log(key==='off'?'Bridge offline':key==='ok'?'Bridge online · Hermes reachable':'Bridge online · Hermes unreachable');
+    log(key==='off'?'Bridge offline':key==='ok'?'Bridge online · Hermes reachable':'Bridge online · Hermes needs connecting');
   }
   if(!h){bdot.className='dot err';btxt.textContent=isHttp?'Bridge offline':'Bridge offline · open via bridge';
     pttTag.textContent='Bridge offline';pttTag.className='tag off';
@@ -1094,7 +1129,8 @@ function applyHealth(h){
     document.getElementById('hmtag').textContent='Bridge offline';document.getElementById('hmtag').className='tag off';
     SYS=null;setSystemExample();
   }else{
-    bdot.className='dot'+(BR.hermes?'':' warn');btxt.textContent=BR.hermes?'Bridge online · Hermes ready':'Bridge online · Hermes unreachable';
+    bdot.className='dot'+(BR.hermes&&!BR.fix?'':' warn');btxt.innerHTML=BR.fix?'Bridge online · <span class="fixchip">Connect Hermes</span>':BR.hermes?'Bridge online · Hermes ready':'Bridge online · Hermes unreachable';
+    if(BR.fix&&!SU.shown&&!SU.dismissed){SU.shown=true;setTimeout(()=>{if(!SU.open)openSetup()},900)}
     const st=h.stt||{};
     if(st.error){pttTag.textContent='Speech model error';pttTag.className='tag off'}
     else if(!st.loaded){pttTag.textContent='Loading speech model…';pttTag.className='tag'}
@@ -1104,7 +1140,7 @@ function applyHealth(h){
     const sp=(v)=>{const m=/^(.*?)(?:\s*\((.*)\)|\s+(local))$/.exec(v||'');return m?`${esc(m[1])} <em>${esc(m[2]||m[3])}</em>`:esc(v||'')};
     document.getElementById('hm1').innerHTML=sp(d.primary||'Hermes Agent');document.getElementById('hm2').innerHTML=sp(d.fallback);document.getElementById('hm3').textContent=d.next_job||'';
     document.getElementById('hmr2').hidden=!d.fallback;document.getElementById('hmr3').hidden=!d.next_job;
-    const ht=document.getElementById('hmtag');ht.textContent=BR.hermes?'Hermes online':'Hermes unreachable';ht.className='tag '+(BR.hermes?'live':'off');
+    const ht=document.getElementById('hmtag');ht.textContent=BR.fix?'Connect Hermes':BR.hermes?'Hermes online':'Hermes unreachable';ht.className='tag '+(BR.hermes&&!BR.fix?'live':'off')+(BR.fix?' fixchip':'');
   }
   if(was!==BR.online&&orbMode==='idle')setOrb('idle');
 }
@@ -1300,20 +1336,170 @@ function renderSettings(fresh){
   if(fresh){ED=null}
   if(!fresh&&ovb.contains(document.activeElement)&&document.activeElement.tagName==='INPUT')return;   /* don't wipe what the user is typing */
   if(!fresh&&setTab==='profile'&&document.getElementById('settab'))return;                           /* profile tab only redraws on open/save */
-  ovb.innerHTML='<div class="tabs"><button class="tab'+(setTab==='profile'?' sel':'')+'" data-tab="profile">Profile</button><button class="tab'+(setTab==='features'?' sel':'')+'" data-tab="features">Features</button></div><div id="settab"></div><div class="foot"><span class="lab">Saved on this computer</span><span class="lab" id="setupd" style="cursor:pointer;text-decoration:underline">MODI v'+esc((BR.health&&BR.health.version)||'?')+' · Updates</span></div>';
+  ovb.innerHTML='<div class="tabs"><button class="tab'+(setTab==='profile'?' sel':'')+'" data-tab="profile">Profile</button><button class="tab'+(setTab==='features'?' sel':'')+'" data-tab="features">Features</button><button class="tab'+(setTab==='ai'?' sel':'')+'" data-tab="ai">AI connection</button></div><div id="settab"></div><div class="foot"><span class="lab">Saved on this computer</span><span class="lab" id="setupd" style="cursor:pointer;text-decoration:underline">MODI v'+esc((BR.health&&BR.health.version)||'?')+' · Updates</span></div>';
   ovb.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{setTab=b.dataset.tab;renderSettings(true)});
   const su=document.getElementById('setupd');if(su)su.onclick=()=>openMod('update');
-  if(setTab==='profile')renderProfileTab();else renderFeaturesTab();
+  if(setTab==='profile')renderProfileTab();else if(setTab==='ai')renderAiTab();else renderFeaturesTab();
 }
 async function loadFeatures(){
   try{const j=await api('/api/features');FEATS=j.features;renderSettings();loadFeatureUi()}catch(e){}
+}
+
+
+/* =====================================================================
+   Setup wizard: Connect Hermes  ->  Sign in to your AI  ->  test message
+   (all the work happens in the local bridge; secrets never come back to this page)
+   ===================================================================== */
+const SU={open:false,st:null,job:null,sel:'',showAI:false,test:null,err:'',dismissed:false,autoDone:false,timer:null,shown:false,testing:false};
+const PROV_INFO={
+  chatgpt:{n:'ChatGPT',s:'Sign in with your ChatGPT plan'},
+  claude:{n:'Claude',s:'Anthropic API key'},
+  grok:{n:'Grok',s:'Sign in with X / SuperGrok, or API key'},
+  openrouter:{n:'OpenRouter',s:'One key, many models'},
+  ollama:{n:'Local model',s:'Runs on this computer (Ollama)'}};
+async function suStatus(fresh){try{SU.st=await api('/api/setup/status'+(fresh?'?fresh=1':''))}catch(e){}}
+function openSetup(opt){
+  opt=opt||{};SU.open=true;SU.dismissed=false;SU.test=null;SU.err='';SU.showAI=!!opt.ai;SU.autoDone=false;
+  if(SU.job&&SU.job.status!=='running')SU.job=null;
+  document.getElementById('setup').classList.add('open');renderSetup();
+  suStatus(true).then(()=>{renderSetup();suAutoRun()});
+}
+function closeSetup(){SU.open=false;SU.dismissed=true;document.getElementById('setup').classList.remove('open');pollHealth()}
+async function suAutoRun(){
+  const st=SU.st;if(!st||(SU.job&&SU.job.status==='running'))return;
+  if((st.state==='needs_fix'||st.state==='needs_start')&&!SU.autoDone&&!SU.job){SU.autoDone=true;suRun('/api/setup/fix')}
+}
+async function suRun(path,body){
+  SU.err='';
+  try{const j=await post(path,body||{});SU.job=j.job;renderSetup();suPoll()}catch(e){SU.err=e.message;renderSetup()}
+}
+function suPoll(){
+  clearTimeout(SU.timer);
+  SU.timer=setTimeout(async()=>{
+    try{const j=await api('/api/setup/job/'+SU.job.id);SU.job=j.job}catch(e){}
+    renderSetup();
+    if(SU.job&&SU.job.status==='running'){suPoll();return}
+    await suStatus(true);const jb=SU.job;
+    if(jb&&jb.status==='done'&&jb.kind==='install'){SU.autoDone=true;SU.job=null;suRun('/api/setup/fix');return}
+    if(jb&&jb.status==='done'&&jb.kind==='fix'){SU.job=null;SU.autoDone=true}
+    if(jb&&jb.status==='done'&&jb.kind==='provider'){SU.showAI=false;log('AI connected · '+(jb.result.connected||''))}
+    if(jb&&jb.status==='error'&&jb.error_code==='not_installed'){SU.job=null;await suStatus(true)}
+    renderSetup();pollHealth();
+  },900);
+}
+function suView(){
+  const st=SU.st,jb=SU.job;
+  if(jb&&jb.status==='running')return 'job';
+  if(jb&&jb.status==='error')return 'error';
+  if(jb&&jb.status==='done'&&jb.kind==='provider')return 'ready';
+  if(!st)return 'loading';
+  if(st.state==='needs_install')return 'install';
+  if(st.state==='needs_fix'||st.state==='needs_start')return 'fix';
+  if(st.state==='needs_ai'||SU.showAI)return 'ai';
+  return 'ready';
+}
+function suCrumbs(v){
+  const i=(v==='install'||v==='fix'||(v==='job'&&SU.job&&(SU.job.kind==='fix'||SU.job.kind==='install')))?0:(v==='ai'||(v==='job'&&SU.job&&SU.job.kind==='provider'))?1:2;
+  const L=['1 · Hermes','2 · Your AI','3 · Ready'];
+  return '<div class="crumbs">'+L.map((t,k)=>'<span class="'+(k<i?'done':k===i?'on':'')+'">'+(k<i?'✓ ':'')+t+'</span>').join('')+'</div>';
+}
+function suChecks(jb){
+  const g={pending:'○',run:'◔',ok:'✓',fail:'✕',skip:'–'};
+  return '<div class="checks">'+jb.steps.map(s=>'<div class="ck '+s.state+'"><i>'+g[s.state]+'</i>'+esc(s.label)+'</div>').join('')+'</div>';
+}
+function suJobExtras(jb){
+  let h='';
+  if(jb.progress!=null)h+='<div class="bar"><i style="width:'+jb.progress+'%"></i></div>';
+  if(jb.link)h+='<div class="linkbox">A sign-in page should have opened in your browser. If it did not, <a href="'+esc(jb.link)+'" target="_blank" rel="noopener">open it here</a>.'+(jb.code?'<br>Enter this code: <span class="code">'+esc(jb.code)+'</span>':'')+'</div>';
+  if(jb.awaiting_input)h+='<div class="row"><input type="text" id="suin" placeholder="Paste the code from the sign-in page" autocomplete="off" spellcheck="false"><button class="btn sel" data-su="sendin">Send</button></div>';
+  if(jb.log&&jb.log.length&&!jb.link)h+='<div class="logt">'+esc(jb.log.slice(-3).join('\n'))+'</div>';
+  return h;
+}
+function suProviderForm(){
+  const id=SU.sel,st=SU.st||{};
+  if(!id)return '<p class="sub">Pick the AI you already pay for or want to use. MODI never sees your password: sign-in happens in your browser or is stored by Hermes on this computer only.</p>';
+  const adv='<details><summary>Advanced</summary><div class="row"><input type="text" id="sumodel" placeholder="Model name (leave empty for the usual choice)" autocomplete="off" spellcheck="false"></div></details>';
+  const keyrow=(ph,lnk)=>'<div class="row"><input type="password" id="sukey" placeholder="'+ph+'" autocomplete="off" spellcheck="false"></div><div class="sub" style="margin:.6vh 0 0">'+lnk+' The key is saved only in Hermes\' settings on this computer.</div>';
+  if(id==='chatgpt')return '<p>A browser window opens so you can sign in to ChatGPT. Uses your ChatGPT subscription.</p><div class="row"><button class="btn sel" data-su="connect">Sign in with ChatGPT</button></div>'+adv;
+  if(id==='claude')return keyrow('Anthropic API key','<a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get a key</a>.')+'<div class="row"><button class="btn sel" data-su="connect">Connect Claude</button><button class="btn" data-su="connect-oauth" title="Only works with a Claude Max plan that has extra usage credits">Use Claude Max sign-in instead</button></div>'+adv;
+  if(id==='grok')return '<p>Have SuperGrok or X Premium+? Sign in with your account:</p><div class="row"><button class="btn sel" data-su="connect-oauth">Sign in with X / SuperGrok</button></div><p class="sub" style="margin-top:1.4vh">Or use an xAI API key:</p>'+keyrow('xAI API key','<a href="https://console.x.ai" target="_blank" rel="noopener">Get a key</a>.')+'<div class="row"><button class="btn" data-su="connect">Connect with the key</button></div>'+adv;
+  if(id==='openrouter')return keyrow('OpenRouter API key','<a href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get a key</a>.')+'<div class="row"><button class="btn sel" data-su="connect">Connect OpenRouter</button></div>'+adv;
+  if(id==='ollama'){
+    const o=st.ollama||{running:false,installed:false,models:[]};
+    if(!o.installed)return '<p>Ollama runs AI models on this computer, free and offline. Install it first, then come back here.</p><div class="row"><a class="btn sel" href="https://ollama.com/download" target="_blank" rel="noopener">Get Ollama</a><button class="btn" data-su="refresh">I installed it</button></div>';
+    const opts=o.models.map(m=>'<option>'+esc(m)+'</option>').join('');
+    return (o.models.length?'<p>Models already on this computer:</p><div class="row"><select id="sumodelsel">'+opts+'</select><button class="btn sel" data-su="connect">Use this model</button></div>':'<p>No models downloaded yet.</p>')+
+      '<p class="sub" style="margin-top:1.4vh">Or download one (a few GB; needs a decent computer). Small models are fine for chat but weaker at tasks:</p><div class="row"><input type="text" id="supull" value="qwen2.5:7b" autocomplete="off" spellcheck="false"><button class="btn" data-su="pull">Download &amp; use</button></div>';
+  }
+  return '';
+}
+function renderSetup(){
+  const box=document.getElementById('setupbox');if(!box||!SU.open)return;
+  const v=suView(),st=SU.st||{},jb=SU.job,A=esc(an());
+  let h='<h4>▸ '+(v==='ai'||(jb&&jb.kind==='provider')?'SIGN IN TO YOUR AI':'CONNECT HERMES')+'</h4>'+suCrumbs(v);
+  if(SU.err)h+='<div class="err">'+esc(SU.err)+'</div>';
+  if(v==='loading')h+='<p>Checking Hermes…</p>';
+  else if(v==='install')h+='<p>'+A+' runs on <b>Hermes</b>, a free AI agent. It is not installed on this computer yet.</p><div class="sub">One click installs it with the official installer from hermes-agent.nousresearch.com (a few minutes, no administrator rights, nothing for you to type).</div><div class="row"><button class="btn sel" data-su="install">Install Hermes</button><button class="btn" data-su="later">Not now</button></div>';
+  else if(v==='fix')h+='<p>Hermes is installed, but '+A+' is not connected to it yet.</p><div class="sub">'+A+' will set up a private key, turn on Hermes\' local connection (only reachable from this computer) and start it. Nothing for you to edit.</div><div class="row"><button class="btn sel" data-su="fix">Fix it</button><button class="btn" data-su="later">Not now</button></div>';
+  else if(v==='job'||v==='error'){
+    h+='<p>'+(jb.kind==='install'?'Installing Hermes…':jb.kind==='fix'?'Connecting to Hermes…':jb.kind==='pull'?'Downloading the model…':'Signing in…')+'</p>'+suChecks(jb);
+    if(v==='job'){h+=suJobExtras(jb)+'<div class="row"><button class="btn" data-su="cancel">Cancel</button></div>'}
+    else{h+='<div class="err">'+esc(jb.error)+'</div><div class="row"><button class="btn sel" data-su="retry">Try again</button><button class="btn" data-su="later">Close</button></div>'}
+  }
+  else if(v==='ai'){
+    h+='<p>Which AI should '+A+' use?</p><div class="tiles">'+Object.keys(PROV_INFO).map(k=>'<button class="tile'+(SU.sel===k?' sel':'')+'" data-prov="'+k+'">'+esc(PROV_INFO[k].n)+'<small>'+esc(PROV_INFO[k].s)+'</small></button>').join('')+'</div>'+suProviderForm();
+    if(st.state==='ready')h+='<div class="row"><button class="btn" data-su="back">Back</button></div>';
+  }
+  else if(v==='ready'){
+    const who=(jb&&jb.result&&jb.result.connected)||st.provider||'your AI',mdl=(jb&&jb.result&&jb.result.model)||st.model||'';
+    h+='<div class="okmsg">✓ Connected to '+esc(who)+(mdl?' · '+esc(mdl):'')+'</div>';
+    if(jb&&jb.result&&jb.result.warning)h+='<div class="sub">'+esc(jb.result.warning)+'</div>';
+    if(SU.test)h+=SU.test.ok?'<div class="okmsg">Test reply: “'+esc(SU.test.reply||'(empty)')+'”</div>':'<div class="err">'+esc(SU.test.error||'No answer')+'</div>';
+    else if(jb&&jb.result&&jb.result.test&&jb.result.test.ok)h+='<div class="okmsg">Test message worked: “'+esc(jb.result.test.reply||'(empty)')+'”</div>';
+    h+='<div class="row"><button class="btn sel" data-su="done">Start talking to '+A+'</button><button class="btn" data-su="test"'+(SU.testing?' disabled':'')+'>'+(SU.testing?'Testing…':'Send a test message')+'</button><button class="btn" data-su="change">Change AI</button></div>';
+  }
+  box.innerHTML=h;
+  box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>{SU.sel=b.dataset.prov;SU.err='';if(SU.sel==='ollama')suStatus(true).then(renderSetup);renderSetup()});
+  box.querySelectorAll('[data-su]').forEach(b=>b.onclick=()=>suAct(b.dataset.su));
+}
+async function suAct(a){
+  const val=id=>{const e=document.getElementById(id);return e?e.value.trim():''};
+  if(a==='later'){closeSetup();return}
+  if(a==='install'){SU.job=null;return suRun('/api/setup/install')}
+  if(a==='fix'){SU.job=null;SU.autoDone=true;return suRun('/api/setup/fix')}
+  if(a==='cancel'){if(SU.job)try{await post('/api/setup/job/'+SU.job.id+'/cancel',{})}catch(e){}return}
+  if(a==='retry'){const k=SU.job&&SU.job.kind;SU.job=null;SU.err='';await suStatus(true);if(k==='fix'||k==='install'){SU.autoDone=true;return suRun(k==='install'?'/api/setup/install':'/api/setup/fix')}return renderSetup()}
+  if(a==='sendin'){const t=val('suin');if(t&&SU.job)try{await post('/api/setup/job/'+SU.job.id+'/input',{text:t})}catch(e){}return}
+  if(a==='refresh'){await suStatus(true);return renderSetup()}
+  if(a==='back'){SU.showAI=false;SU.sel='';return renderSetup()}
+  if(a==='change'){SU.showAI=true;SU.job=null;SU.test=null;SU.sel='';return renderSetup()}
+  if(a==='done'){closeSetup();setCaption(an(),'Connected. Say something!');return}
+  if(a==='test'){SU.testing=true;SU.test=null;renderSetup();
+    try{const j=await post('/api/setup/test',{});SU.test=j.result}catch(e){SU.test={ok:false,error:e.message}}
+    SU.testing=false;await suStatus(true);return renderSetup()}
+  if(a==='connect'||a==='connect-oauth'||a==='pull'){
+    let id=SU.sel;if(a==='connect-oauth')id=id==='grok'?'grok':'claude_oauth';
+    else if(id==='grok')id='grok_key';
+    const body={provider:id,model:val('sumodel')};
+    if(id==='claude'||id==='grok_key'||id==='openrouter'){body.api_key=val('sukey');const e=document.getElementById('sukey');if(e)e.value=''}
+    if(id==='ollama'){body.model=a==='pull'?val('supull'):val('sumodelsel');if(!body.model){SU.err='Choose a model first.';return renderSetup()}}
+    SU.job=null;return suRun('/api/setup/provider',body);
+  }
+}
+function renderAiTab(){
+  const st=(BR.health&&BR.health.setup)||{},ok=st.state==='ready';
+  document.getElementById('settab').innerHTML='<div class="prof"><label>Hermes</label><div class="prow"><span class="msg">'+(ok?'Connected to '+esc(st.provider||'your AI')+(st.model?' · '+esc(st.model):''):st.state==='needs_ai'?'Hermes is running, but no AI is signed in yet.':st.state==='needs_install'?'Hermes is not installed yet.':'Hermes is not connected yet.')+'</span></div>'+
+    '<label>AI</label><div class="prow"><button class="btn sel" id="aisetup">'+(ok?'Change AI':'Connect now')+'</button><button class="btn" id="aifix">Re-check Hermes</button></div>'+
+    '<div class="prow"><span class="msg">Sign-ins and API keys are stored by Hermes on this computer only; '+esc(an())+' never shows or uploads them.</span></div></div>';
+  document.getElementById('aisetup').onclick=()=>openSetup({ai:true});
+  document.getElementById('aifix').onclick=()=>openSetup();
 }
 
 (async()=>{
   await pollHealth();setOrb('idle');if(BR.online){loadHistory();loadFeatures();startEvents();loadUpdate();setInterval(loadUpdate,600000)}
   setInterval(pollHealth,4000);setInterval(pollSystem,2000);pollSystem();
 })();
-window.__hud={MODI,openMod,FT,ftUpdate,askHermes,look,voiceToggle};
+window.__hud={openSetup,SU,MODI,openMod,FT,ftUpdate,askHermes,look,voiceToggle};
 })();
 </script>
 </body>

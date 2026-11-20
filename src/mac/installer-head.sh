@@ -8,12 +8,11 @@
 #
 #  What it does (asks before each big step):
 #    1. checks Python 3.11+ (offers Homebrew or python.org if missing)
-#    2. installs Hermes Agent with its official installer if it is not installed
-#    3. runs `hermes setup` so Hermes can sign in to YOUR AI account
-#    4. optional: Ollama + local fallback model
-#    5. turns on Hermes' local API with a fresh random key (never printed) + restarts the gateway
-#    6. installs MODI (bridge + HUD + voice models) and a standalone MODI.app in ~/Applications
-#    7. optional: start MODI's bridge at login (LaunchAgent)
+#    2. finds Hermes Agent, or installs it with its official installer if you say yes
+#    3. installs MODI (bridge + HUD + voice models) and a standalone MODI.app in ~/Applications
+#    4. connects MODI to Hermes (private key, local API, start) - no files to edit, nothing printed
+#    5. optional: start MODI's bridge at login (LaunchAgent)
+#  Signing in to your AI (ChatGPT / Claude / Grok / a local model) happens in MODI's first-run screen.
 #  Options:  --uninstall   --yes (accept defaults, no prompts)   --extract-to DIR (just unpack)
 #            --update (non-interactive in-place update: keeps your data/Hermes setup, restarts MODI)
 # =====================================================================================
@@ -106,9 +105,9 @@ do_uninstall() {
     rm -rf "$DATA"; ok "removed $DATA"
   fi
   echo
-  echo "  Hermes Agent itself was NOT touched. MODI's API key and API_SERVER_* settings remain in $HERMES_HOME_DIR/.env."
+  echo "  Hermes Agent itself was NOT touched. The API key MODI added (API_SERVER_KEY in $HERMES_HOME_DIR/.env) stays, so other tools keep working."
   if command -v hermes >/dev/null 2>&1 && ask "Turn Hermes' local API server off again (hermes config set API_SERVER_ENABLED false + restart gateway)?" n; then
-    hermes config set API_SERVER_ENABLED false >/dev/null 2>&1 && hermes gateway restart >/dev/null 2>&1; ok "Hermes API server disabled"
+    hermes config set API_SERVER_ENABLED false >/dev/null 2>&1 && hermes gateway restart --detach --yes >/dev/null 2>&1; ok "Hermes API server disabled"
   fi
   ok "MODI uninstalled."
   pause_exit 0
@@ -130,7 +129,7 @@ if [ "$YES" != 1 ] && [ -z "${MODI_NO_MENU:-}" ]; then
 fi
 
 # ---------- 1. Python ----------
-step "1/7  Checking Python 3.11+"
+step "1/5  Checking Python 3.11+"
 py_ok() { "$1" -c 'import sys, venv, ssl; sys.exit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; }
 find_python() {
   local c p
@@ -174,81 +173,33 @@ elif [ -z "$PY" ]; then
 fi
 [ -n "$PY" ] && ok "Python: $PY ($("$PY" -c 'import sys;print(".".join(map(str,sys.version_info[:3])))'))"
 
-if [ "$UPDATE" = 1 ]; then
-  step "Update mode: Hermes setup is left as it is"
-else
 # ---------- 2. Hermes ----------
-step "2/7  Hermes Agent"
-if ! command -v hermes >/dev/null 2>&1 && [ ! -x "$HERMES_HOME_DIR/hermes-agent/venv/bin/hermes" ]; then
+# Hermes is only *found* here, never configured: MODI connects to it itself (key, API server, start, AI sign-in) in step 4
+# and in its first-run screen.  The Hermes installer may put `hermes` in ~/.local/bin, which a shortcut/LaunchAgent does not have on PATH.
+find_hermes() {
+  local d
+  for d in "$HERMES_HOME_DIR/bin" "$HERMES_HOME_DIR/hermes-agent/.hermes/bin" "$HOME/.local/bin" /opt/homebrew/bin /usr/local/bin; do
+    [ -d "$d" ] && case ":$PATH:" in *":$d:"*) ;; *) PATH="$PATH:$d";; esac
+  done
+  export PATH; hash -r 2>/dev/null
+  command -v hermes >/dev/null 2>&1
+}
+step "2/5  Hermes Agent"
+find_hermes && HERMES_OK=1 || HERMES_OK=0
+if [ "$HERMES_OK" = 0 ] && [ "$UPDATE" != 1 ]; then
   warn "Hermes Agent is not installed."
   if ask "Install it now with the official installer (https://hermes-agent.nousresearch.com/install.sh)?" y; then
     tmpi="$(mktemp "${TMPDIR:-/tmp}/hermes-install.XXXXXX")"
-    if curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o "$tmpi"; then bash "$tmpi"; else err "download failed"; fi
+    if curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o "$tmpi"; then bash "$tmpi" --non-interactive || warn "the Hermes installer reported a problem"; else err "download failed"; fi
     rm -f "$tmpi"
-    hash -r; export PATH="$HOME/.local/bin:$PATH"
+    find_hermes && HERMES_OK=1 || HERMES_OK=0
   fi
 fi
-if command -v hermes >/dev/null 2>&1; then
-  ok "hermes: $(command -v hermes)"; HERMES_OK=1
-else
-  warn "Hermes CLI not found - MODI will be installed, but run the Hermes installer and 'hermes setup' before using it."; HERMES_OK=0
-fi
+if [ "$HERMES_OK" = 1 ]; then ok "hermes: $(command -v hermes)"
+else warn "Hermes is not installed (yet). That's fine - MODI's first screen installs it with one click."; fi
 
-# ---------- 3. hermes setup ----------
-step "3/7  Sign in to your AI provider (hermes setup)"
-if [ "$HERMES_OK" = 1 ]; then
-  if [ ! -f "$HERMES_HOME_DIR/config.yaml" ]; then
-    warn "Hermes has not been set up yet."
-    if ask "Run 'hermes setup' now (choose your model and sign in with YOUR account)?" y; then hermes setup || warn "hermes setup did not finish - you can re-run it later"; fi
-  else
-    ok "Hermes is already configured"
-    if ask "Run 'hermes setup' again to change model/login?" n; then hermes setup || true; fi
-  fi
-else warn "skipped (no Hermes)"; fi
-
-# ---------- 4. Ollama ----------
-step "4/7  Optional: offline fallback model (Ollama)"
-if command -v ollama >/dev/null 2>&1 || [ -d /Applications/Ollama.app ]; then ok "Ollama is already installed"
-elif ask "Install Ollama so Hermes has an offline fallback model?" n; then
-  if command -v brew >/dev/null 2>&1; then brew install ollama && { brew services start ollama >/dev/null 2>&1 || true; }
-  else open "https://ollama.com/download" 2>/dev/null; echo "  Install Ollama from the page that opened, then run:  ollama pull hermes3:8b"; fi
-fi
-if command -v ollama >/dev/null 2>&1 && ! ollama list 2>/dev/null | grep -q 'hermes3'; then
-  if ask "Download the hermes3:8b model now (about 5 GB)?" n; then ollama pull hermes3:8b || warn "pull failed - run 'ollama pull hermes3:8b' later"; fi
-  echo "  To use it as Hermes' fallback model, run:  hermes fallback"
-fi
-
-# ---------- 5. Hermes API ----------
-step "5/7  Turning on Hermes' local API for MODI (key is not printed)"
-if [ "$HERMES_OK" = 1 ]; then
-  have_key=0
-  if [ -f "$HERMES_HOME_DIR/.env" ]; then
-    k="$(grep -E '^API_SERVER_KEY=' "$HERMES_HOME_DIR/.env" | tail -1 | cut -d= -f2- | tr -d "\"' \r")"
-    [ "${#k}" -ge 16 ] && have_key=1; k=""
-  fi
-  if [ "$have_key" = 1 ]; then ok "API key already present (kept)"
-  else
-    newkey="modi-$(openssl rand -hex 24)"
-    if hermes config set API_SERVER_KEY "$newkey" >/dev/null 2>&1; then ok "fresh random API key written to Hermes config"; else err "could not write API key"; fi
-    newkey=""
-  fi
-  hermes config set API_SERVER_ENABLED true >/dev/null 2>&1 && ok "API server enabled"
-  # Gateway: restart if it exists, otherwise install it as a launchd service
-  if hermes gateway restart >/dev/null 2>&1; then ok "gateway restarted"
-  else
-    warn "gateway was not running - installing it"
-    hermes gateway install >/dev/null 2>&1 || true
-    hermes gateway start >/dev/null 2>&1 || hermes gateway restart >/dev/null 2>&1 || warn "could not start the gateway; run 'hermes gateway run' in a Terminal"
-  fi
-  printf '  waiting for the API'
-  up=0; for i in $(seq 1 30); do if curl -fsS --max-time 2 http://127.0.0.1:8642/health >/dev/null 2>&1; then up=1; break; fi; printf '.'; sleep 1; done; echo
-  if [ "$up" = 1 ]; then ok "Hermes API is answering on 127.0.0.1:8642"; else warn "Hermes API not answering yet (check: hermes gateway status). MODI will use 'hermes -z' as a fallback."; fi
-else warn "skipped (no Hermes)"; fi
-
-fi   # end of non-update steps 2-5
-
-# ---------- 6. Install MODI ----------
-step "6/7  Installing MODI to $APPDIR"
+# ---------- 3. Install MODI ----------
+step "3/5  Installing MODI to $APPDIR"
 port="$(get_port)"
 if curl -fsS --max-time 2 "http://127.0.0.1:$port/api/health" >/dev/null 2>&1; then
   curl -fsS --max-time 2 -X POST "http://127.0.0.1:$port/api/quit" >/dev/null 2>&1
@@ -345,8 +296,14 @@ chmod +x "$BUNDLE/Contents/MacOS/MODI"
 [ "$IS_MAC" = 1 ] && touch "$BUNDLE"
 ok "app created: $BUNDLE"
 
-# ---------- 7. login item ----------
-step "7/7  Start at login (optional)"
+# ---------- 4. Connect Hermes ----------
+step "4/5  Connecting MODI to Hermes (nothing to type)"
+if [ "$HERMES_OK" = 1 ]; then
+  "$VPY" "$APPDIR/bridge/bridge.py" --connect-hermes || warn "Could not finish connecting to Hermes now - MODI's first screen has a 'Fix it' button for that."
+else warn "skipped - Hermes is not installed yet"; fi
+
+# ---------- 5. login item ----------
+step "5/5  Start at login (optional)"
 LOGIN=0
 if [ "$UPDATE" = 1 ]; then [ -f "$PLIST" ] && LOGIN=1
 elif ask "Start MODI's bridge automatically when you log in (the window still opens only when you launch MODI)?" n; then LOGIN=1; fi

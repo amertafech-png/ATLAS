@@ -116,7 +116,7 @@ bridge/bridge.py               local bridge (STT, TTS, Hermes calls, features AP
 bridge/modi_meta.py            version + GitHub repo (one place)   bridge/modi_update.py   self-updater
 bridge/modi_features.py        feature-module framework      bridge/modules/   feature modules (wake_word.py/.js, _example.py)
 bridge/config.json, requirements.txt
-win/MODI.ps1, MODI.vbs         Windows launcher              mac/modi-launch.sh   macOS launcher
+win/MODI.ps1                     Windows launcher              mac/modi-launch.sh   macOS launcher
 assets/modi.ico|png|icns       icons                         tools/make_icons.py, tools/build.py  (build the installers)
 bridge/dev/                    test tools only (mock Hermes, test_update.py, test_wake.py, screenshot scripts)
 ```

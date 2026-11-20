@@ -15,7 +15,7 @@ FILES = {  # archive path -> source path
     'bridge/modi_meta.py': 'bridge/modi_meta.py', 'bridge/modi_update.py': 'bridge/modi_update.py',
     'bridge/modi_features.py': 'bridge/modi_features.py', 'bridge/modules/_example.py': 'bridge/modules/_example.py',
     'bridge/modules/wake_word.py': 'bridge/modules/wake_word.py', 'bridge/modules/wake_word.js': 'bridge/modules/wake_word.js',
-    'win/MODI.ps1': 'src/win/MODI.ps1', 'win/MODI.vbs': 'src/win/MODI.vbs',
+    'win/MODI.ps1': 'src/win/MODI.ps1', 
     'mac/modi-launch.sh': 'src/mac/modi-launch.sh',
     'GUIDE.md': 'docs/GUIDE.md', 'LICENSE': 'LICENSE',
 }

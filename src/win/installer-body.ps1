@@ -5,12 +5,11 @@
 #  not code-signed): click "More info" > "Run anyway".
 #  What it does (asks before each big step):
 #    1. checks Python 3.11+ (offers to install it with winget)
-#    2. installs Hermes Agent with its official installer if it is missing
-#    3. runs `hermes setup` so Hermes can sign in to YOUR AI account
-#    4. optional: Ollama + local fallback model
-#    5. turns on Hermes' local API with a fresh random key (never printed) + restarts the gateway
-#    6. installs MODI to %LOCALAPPDATA%\MODI\app, Python packages, voice models
-#    7. Desktop + Start Menu shortcuts (own MODI icon, opens as a standalone app window)
+#    2. finds Hermes Agent, or installs it with its official installer if you say yes
+#    3. installs MODI to %LOCALAPPDATA%\MODI\app, Python packages, voice models
+#    4. connects MODI to Hermes (private key, local API, start) - no files to edit, nothing printed
+#    5. Desktop + Start Menu shortcuts (own MODI icon, opens as a standalone app window)
+#  Signing in to your AI (ChatGPT / Claude / Grok / a local model) happens in MODI's first-run screen.
 #  Options: run  MODI-Setup.bat uninstall  to remove MODI;  MODI-Setup.bat /update  for a silent in-place update.
 # =====================================================================================
 param([string]$Action = '', [switch]$Yes, [switch]$Update, [string]$ExtractTo = '')
@@ -71,15 +70,126 @@ function Find-Python {
     return $null
 }
 function Refresh-Path { $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User') + ";$env:USERPROFILE\.local\bin" }
-function New-Shortcut([string]$path, [string]$args, [string]$desc) {
-    $ws = New-Object -ComObject WScript.Shell
-    $s = $ws.CreateShortcut($path)
-    $s.TargetPath = Join-Path $env:WINDIR 'System32\wscript.exe'
-    $s.Arguments = $args
-    $s.WorkingDirectory = $AppDir
-    $s.IconLocation = (Join-Path $AppDir 'assets\modi.ico') + ',0'
-    $s.Description = $desc
-    $s.Save()
+# Hermes is only *found* here, never configured: MODI connects to it itself (key, API server, start, AI sign-in) in step 4
+# and in its first-run screen. The Hermes installer puts `hermes` on the *user* PATH of future terminals only, so look in the known folders too.
+function Find-Hermes {
+    Refresh-Path
+    foreach ($d in @((Join-Path $HermesHome 'bin'), (Join-Path $env:LOCALAPPDATA 'hermes\bin'), (Join-Path $env:USERPROFILE '.local\bin'), (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps'))) {
+        if ((Test-Path $d) -and (($env:Path -split ';') -notcontains $d)) { $env:Path = $env:Path + ';' + $d }
+    }
+    return [bool](Get-Command hermes -ErrorAction SilentlyContinue)
+}
+# ---- shortcuts without Windows Script Host: .lnk files are written through the Windows shell-link API (IShellLink) ----
+$PsExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+function Initialize-LinkApi {
+    if ('ModiLnk' -as [type]) { return $true }
+    try {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class ModiLnk {
+    [ComImport, Guid("00021401-0000-0000-C000-000000000046")] private class ShellLinkCoClass { }
+    [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("000214F9-0000-0000-C000-000000000046")]
+    private interface IShellLinkW {
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cch, IntPtr pfd, uint fFlags);
+        void GetIDList(out IntPtr ppidl);
+        void SetIDList(IntPtr pidl);
+        void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszName, int cch);
+        void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+        void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszDir, int cch);
+        void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
+        void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszArgs, int cch);
+        void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
+        void GetHotkey(out short pwHotkey);
+        void SetHotkey(short wHotkey);
+        void GetShowCmd(out int piShowCmd);
+        void SetShowCmd(int iShowCmd);
+        void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszIconPath, int cch, out int piIcon);
+        void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
+        void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, uint dwReserved);
+        void Resolve(IntPtr hwnd, uint fFlags);
+        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
+    }
+    [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("0000010b-0000-0000-C000-000000000046")]
+    private interface IPersistFileW {
+        void GetClassID(out Guid pClassID);
+        [PreserveSig] int IsDirty();
+        void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, uint dwMode);
+        void Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, [MarshalAs(UnmanagedType.Bool)] bool fRemember);
+        void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
+        void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string ppszFileName);
+    }
+    public static void Create(string lnk, string target, string args, string workDir, string icon, string desc, int showCmd) {
+        IShellLinkW l = (IShellLinkW)new ShellLinkCoClass();
+        l.SetPath(target);
+        l.SetArguments(args);
+        l.SetWorkingDirectory(workDir);
+        l.SetDescription(desc);
+        l.SetShowCmd(showCmd);
+        if (!string.IsNullOrEmpty(icon)) { l.SetIconLocation(icon, 0); }
+        ((IPersistFileW)l).Save(lnk, true);
+    }
+    public static string[] Read(string lnk) {
+        IShellLinkW l = (IShellLinkW)new ShellLinkCoClass();
+        ((IPersistFileW)l).Load(lnk, 0);
+        StringBuilder t = new StringBuilder(1024);
+        StringBuilder a = new StringBuilder(2048);
+        StringBuilder d = new StringBuilder(1024);
+        StringBuilder i = new StringBuilder(1024);
+        int idx;
+        l.GetPath(t, t.Capacity, IntPtr.Zero, 0);
+        l.GetArguments(a, a.Capacity);
+        l.GetDescription(d, d.Capacity);
+        l.GetIconLocation(i, i.Capacity, out idx);
+        return new string[] { t.ToString(), a.ToString(), d.ToString(), i.ToString() };
+    }
+}
+'@
+        return $true
+    } catch { return $false }
+}
+# the command every MODI shortcut runs: PowerShell with no window, straight at MODI.ps1 (-Mode Launch | Bridge | Stop)
+function Get-ModiLaunchArgs([string]$mode) {
+    return ('-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + (Join-Path $AppDir 'win\MODI.ps1') + '" -Mode ' + $mode)
+}
+function New-Shortcut([string]$path, [string]$mode, [string]$desc) {
+    if (-not (Initialize-LinkApi)) { return $false }
+    try {
+        [ModiLnk]::Create($path, $PsExe, (Get-ModiLaunchArgs $mode), $AppDir, ((Join-Path $AppDir 'assets\modi.ico') + ',0'), $desc, 7)
+        return $true
+    } catch { return $false }
+}
+# plain .cmd launcher, only used when a shortcut could not be written (locked-down PCs)
+function New-CmdLauncher([string]$path, [string]$mode) {
+    $line = 'start "" /min "' + $PsExe + '" ' + (Get-ModiLaunchArgs $mode)
+    Set-Content -LiteralPath $path -Value @('@echo off', $line) -Encoding ASCII
+}
+# Older MODI versions (<= 1.2.0) pointed every shortcut at wscript.exe + MODI.vbs; some PCs have Windows Script Host switched off.  #legacy-wsh
+# Re-point any such shortcut (Desktop, Start Menu, Startup, taskbar pins) and delete the old .vbs launcher.  #legacy-wsh
+function Repair-LegacyLaunchers {
+    $dirs = @($Desktop, [Environment]::GetFolderPath('CommonDesktopDirectory'), $StartMenu, (Split-Path -Parent $StartMenu), $Startup,
+              (Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar'),
+              (Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch'))
+    $fixed = 0
+    if (Initialize-LinkApi) {
+        foreach ($d in $dirs) {
+            if (-not $d -or -not (Test-Path $d)) { continue }
+            foreach ($f in (Get-ChildItem -LiteralPath $d -Filter '*.lnk' -File -ErrorAction SilentlyContinue)) {
+                try {
+                    $i = [ModiLnk]::Read($f.FullName)
+                    if (($i[0] -like '*wscript.exe') -and ($i[1] -match 'MODI\.vbs')) {  #legacy-wsh
+                        $mode = 'Launch'
+                        if ($i[1] -match '(?i)\sstop\s*$') { $mode = 'Stop' } elseif ($i[1] -match '(?i)\sbridge\s*$') { $mode = 'Bridge' }
+                        $desc = $i[2]; if (-not $desc) { $desc = 'MODI' }
+                        if (New-Shortcut $f.FullName $mode $desc) { $fixed++ }
+                    }
+                } catch { }
+            }
+        }
+    }
+    foreach ($v in @((Join-Path $AppDir 'win\MODI.vbs'), (Join-Path $AppDir 'MODI.vbs'))) { if (Test-Path $v) { Remove-Item $v -Force -ErrorAction SilentlyContinue } }  #legacy-wsh
+    if ($fixed -gt 0) { Ok "$fixed old shortcut(s) that used Windows Script Host were switched to the new launcher" }
 }
 
 if ($ExtractTo) { Extract-Payload $ExtractTo; Write-Host "Extracted to $ExtractTo"; exit 0 }
@@ -91,15 +201,15 @@ Write-Host "  MODI  -  personal command interface for Hermes Agent  (Windows ins
 function Do-Uninstall {
     Step 'Uninstalling MODI'
     if (Stop-Bridge) { Ok 'bridge stopped' }
-    foreach ($f in @((Join-Path $Desktop 'MODI.lnk'), (Join-Path $Startup 'MODI bridge.lnk'))) { if (Test-Path $f) { Remove-Item $f -Force; Ok "removed $f" } }
+    foreach ($f in @((Join-Path $Desktop 'MODI.lnk'), (Join-Path $Desktop 'MODI.cmd'), (Join-Path $Startup 'MODI bridge.lnk'), (Join-Path $Startup 'MODI bridge.cmd'))) { if (Test-Path $f) { Remove-Item $f -Force; Ok "removed $f" } }
     if (Test-Path $StartMenu) { Remove-Item $StartMenu -Recurse -Force; Ok 'removed Start Menu entries' }
     if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force -ErrorAction SilentlyContinue; Ok "removed $AppDir" }
     if ((Test-Path $Data) -and (Ask "Also delete MODI's saved data (notes, voice and speech models, window profile, logs)?" $false)) {
         Remove-Item $Data -Recurse -Force -ErrorAction SilentlyContinue; Ok "removed $Data"
     }
-    Write-Host "  Hermes Agent itself was NOT touched. MODI's API key and API_SERVER_* settings remain in your Hermes config."
-    if ((Get-Command hermes -ErrorAction SilentlyContinue) -and (Ask "Turn Hermes' local API server off again?" $false)) {
-        hermes config set API_SERVER_ENABLED false | Out-Null; hermes gateway restart | Out-Null; Ok 'Hermes API server disabled'
+    Write-Host "  Hermes Agent itself was NOT touched. The API key MODI added (API_SERVER_KEY in Hermes' .env) stays, so other tools keep working."
+    if ((Find-Hermes) -and (Ask "Turn Hermes' local API server off again?" $false)) {
+        hermes config set API_SERVER_ENABLED false | Out-Null; hermes gateway restart --detach --yes | Out-Null; Ok 'Hermes API server disabled'
     }
     Ok 'MODI uninstalled.'
     Finish 0
@@ -113,7 +223,7 @@ if (-not $Yes -and -not $Action) {
 }
 
 # ---------- 1. Python ----------
-Step '1/7  Checking Python 3.11+'
+Step '1/5  Checking Python 3.11+'
 $Py = $null
 if ($Update -and (Test-Path (Join-Path $AppDir '.venv\Scripts\python.exe'))) { Ok 'update mode: using the existing Python environment' }
 else { $Py = Find-Python }
@@ -130,85 +240,26 @@ if (-not $Py -and -not ($Update -and (Test-Path (Join-Path $AppDir '.venv\Script
 }
 if ($Py) { Ok "Python: $Py" }
 
-if ($Update) { Step 'Update mode: Hermes setup is left as it is' } else {
-
 # ---------- 2. Hermes ----------
-Step '2/7  Hermes Agent'
-Refresh-Path
-if (-not (Get-Command hermes -ErrorAction SilentlyContinue)) {
+Step '2/5  Hermes Agent'
+$HermesOk = Find-Hermes
+if (-not $HermesOk -and -not $Update) {
     Warn 'Hermes Agent is not installed.'
     if (Ask 'Install it now with the official installer (https://hermes-agent.nousresearch.com/install.ps1)?' $true) {
-        try { Invoke-Expression (Invoke-RestMethod -Uri 'https://hermes-agent.nousresearch.com/install.ps1') } catch { Err "Hermes installer failed: $_" }
-        Refresh-Path
+        try {
+            $hi = Join-Path $env:TEMP 'hermes-install.ps1'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://hermes-agent.nousresearch.com/install.ps1' -OutFile $hi
+            & (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File $hi -NonInteractive
+            Remove-Item $hi -Force -ErrorAction SilentlyContinue
+        } catch { Err "Hermes installer failed: $_" }
+        $HermesOk = Find-Hermes
     }
 }
-$HermesOk = [bool](Get-Command hermes -ErrorAction SilentlyContinue)
-if ($HermesOk) { Ok "hermes: $((Get-Command hermes).Source)" } else { Warn "Hermes CLI not found - MODI will be installed, but run the Hermes installer and 'hermes setup' before using it." }
+if ($HermesOk) { Ok "hermes: $((Get-Command hermes).Source)" }
+else { Warn "Hermes is not installed (yet). That's fine - MODI's first screen installs it with one click." }
 
-# ---------- 3. hermes setup ----------
-Step '3/7  Sign in to your AI provider (hermes setup)'
-if ($HermesOk) {
-    if (-not (Test-Path (Join-Path $HermesHome 'config.yaml'))) {
-        Warn 'Hermes has not been set up yet.'
-        if (Ask "Run 'hermes setup' now (choose your model and sign in with YOUR account)?" $true) { hermes setup }
-    } else {
-        Ok 'Hermes is already configured'
-        if (Ask "Run 'hermes setup' again to change model/login?" $false) { hermes setup }
-    }
-} else { Warn 'skipped (no Hermes)' }
-
-# ---------- 4. Ollama ----------
-Step '4/7  Optional: offline fallback model (Ollama)'
-if (Get-Command ollama -ErrorAction SilentlyContinue) { Ok 'Ollama is already installed' }
-elseif (Ask 'Install Ollama so Hermes has an offline fallback model?' $false) {
-    if (Get-Command winget -ErrorAction SilentlyContinue) { winget install -e --id Ollama.Ollama --accept-package-agreements --accept-source-agreements; Refresh-Path }
-    else { Start-Process 'https://ollama.com/download'; Write-Host '  Install Ollama, then run:  ollama pull hermes3:8b' }
-}
-if (Get-Command ollama -ErrorAction SilentlyContinue) {
-    if (-not ((ollama list 2>$null) -match 'hermes3')) {
-        if (Ask 'Download the hermes3:8b model now (about 5 GB)?' $false) { ollama pull hermes3:8b }
-        Write-Host "  To use it as Hermes' fallback model run:  hermes fallback"
-    }
-}
-
-# ---------- 5. Hermes API ----------
-Step "5/7  Turning on Hermes' local API for MODI (key is not printed)"
-if ($HermesOk) {
-    $haveKey = $false
-    $envFile = Join-Path $HermesHome '.env'
-    if (Test-Path $envFile) {
-        $line = Get-Content $envFile | Where-Object { $_ -match '^API_SERVER_KEY=' } | Select-Object -Last 1
-        if ($line) { $k = ($line -replace '^API_SERVER_KEY=', '').Trim('"', "'", ' '); if ($k.Length -ge 16) { $haveKey = $true } }
-    }
-    if ($haveKey) { Ok 'API key already present (kept)' }
-    else {
-        $bytes = New-Object byte[] 24; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-        $newKey = 'modi-' + (($bytes | ForEach-Object { $_.ToString('x2') }) -join '')
-        hermes config set API_SERVER_KEY $newKey | Out-Null
-        if ($LASTEXITCODE -eq 0) { Ok 'fresh random API key written to Hermes config' } else { Err 'could not write API key' }
-        $newKey = $null
-    }
-    hermes config set API_SERVER_ENABLED true | Out-Null; if ($LASTEXITCODE -eq 0) { Ok 'API server enabled' }
-    hermes gateway restart | Out-Null
-    if ($LASTEXITCODE -eq 0) { Ok 'gateway restarted' }
-    else {
-        Warn 'gateway was not running - installing it'
-        hermes gateway install | Out-Null; hermes gateway start | Out-Null
-    }
-    Write-Host -NoNewline '  waiting for the API'
-    $up = $false
-    for ($i = 0; $i -lt 30; $i++) {
-        try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8642/health' -TimeoutSec 2; if ($r.StatusCode -eq 200) { $up = $true; break } } catch { }
-        Write-Host -NoNewline '.'; Start-Sleep -Seconds 1
-    }
-    Write-Host ''
-    if ($up) { Ok 'Hermes API is answering on 127.0.0.1:8642' } else { Warn "Hermes API not answering yet (check: hermes gateway status). MODI will use 'hermes -z' as a fallback." }
-} else { Warn 'skipped (no Hermes)' }
-
-}  # end of non-update steps 2-5
-
-# ---------- 6. Install MODI ----------
-Step "6/7  Installing MODI to $AppDir"
+# ---------- 3. Install MODI ----------
+Step "3/5  Installing MODI to $AppDir"
 if (Stop-Bridge) {
     for ($i = 0; $i -lt 40; $i++) { try { Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$(Get-Port)/api/health" -TimeoutSec 1 | Out-Null; Start-Sleep -Milliseconds 500 } catch { break } }
 }
@@ -261,23 +312,37 @@ if ((-not $Update) -and (Ask "Download the speech models now (Whisper 'base' ~15
     if ($LASTEXITCODE -ne 0) { Warn 'model download had problems - MODI will retry on first use' }
 }
 
-# ---------- 7. Shortcuts ----------
-Step '7/7  Shortcuts'
-$vbs = '"' + (Join-Path $AppDir 'win\MODI.vbs') + '"'
-New-Shortcut (Join-Path $Desktop 'MODI.lnk') $vbs 'MODI - personal command interface for Hermes Agent'
+# ---------- 4. Connect Hermes ----------
+Step '4/5  Connecting MODI to Hermes (nothing to type)'
+if ($HermesOk) {
+    & $VenvPy (Join-Path $AppDir 'bridge\bridge.py') --connect-hermes
+    if ($LASTEXITCODE -ne 0) { Warn "Could not finish connecting to Hermes now - MODI's first screen has a 'Fix it' button for that." }
+} else { Warn 'skipped - Hermes is not installed yet' }
+
+# ---------- 5. Shortcuts ----------
+Step '5/5  Shortcuts'
+Repair-LegacyLaunchers
+$okAll = $true
+$okAll = (New-Shortcut (Join-Path $Desktop 'MODI.lnk') 'Launch' 'MODI - personal command interface for Hermes Agent') -and $okAll
 New-Item -ItemType Directory -Force -Path $StartMenu | Out-Null
-New-Shortcut (Join-Path $StartMenu 'MODI.lnk') $vbs 'MODI - personal command interface for Hermes Agent'
-New-Shortcut (Join-Path $StartMenu 'Stop MODI.lnk') ($vbs + ' stop') 'Stop the MODI bridge'
-Ok 'Desktop and Start Menu shortcuts created (pin MODI to the taskbar from the Start Menu if you like)'
+$okAll = (New-Shortcut (Join-Path $StartMenu 'MODI.lnk') 'Launch' 'MODI - personal command interface for Hermes Agent') -and $okAll
+$okAll = (New-Shortcut (Join-Path $StartMenu 'Stop MODI.lnk') 'Stop' 'Stop the MODI bridge') -and $okAll
+if ($okAll) { Ok 'Desktop and Start Menu shortcuts created (pin MODI to the taskbar from the Start Menu if you like)' }
+else {
+    Warn 'Windows would not let this installer create shortcuts - made a MODI.cmd launcher on the Desktop and in the MODI folder instead.'
+    New-CmdLauncher (Join-Path $Desktop 'MODI.cmd') 'Launch'
+    New-CmdLauncher (Join-Path $StartMenu 'MODI.cmd') 'Launch'
+}
 $sl = Join-Path $Startup 'MODI bridge.lnk'
 if ($Update) {
-    if (Test-Path $sl) { New-Shortcut $sl ($vbs + ' bridge') 'MODI bridge at login' }
+    if (Test-Path $sl) { [void](New-Shortcut $sl 'Bridge' 'MODI bridge at login') }
 } elseif (Ask "Start MODI's bridge automatically when you sign in (no window until you open MODI)?" $false) {
-    New-Shortcut $sl ($vbs + ' bridge') 'MODI bridge at login'; Ok 'start-at-login enabled'
+    if (New-Shortcut $sl 'Bridge' 'MODI bridge at login') { Ok 'start-at-login enabled' }
+    else { New-CmdLauncher (Join-Path $Startup 'MODI bridge.cmd') 'Bridge'; Ok 'start-at-login enabled (.cmd)' }
 } elseif (Test-Path $sl) { Remove-Item $sl -Force; Ok 'start-at-login removed' }
 
 if ($Update) {
-    Start-Process (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList ($vbs + ' bridge')
+    Start-Process -FilePath $PsExe -ArgumentList (Get-ModiLaunchArgs 'Bridge') -WindowStyle Hidden
     Ok 'MODI updated - the open MODI window reloads by itself'
     Finish 0
 }
@@ -287,5 +352,5 @@ Write-Host " MODI is installed." -ForegroundColor Green
 Write-Host "  Open it from the Desktop icon or Start Menu > MODI. It opens as its own window (Edge app mode)."
 Write-Host "  First launch: Windows/Edge will ask for Microphone and Camera access - click Allow."
 Write-Host "  Uninstall:  run this installer again and choose 2  (or  MODI-Setup.bat uninstall)."
-if (Ask 'Launch MODI now?' $true) { Start-Process (Join-Path $env:WINDIR 'System32\wscript.exe') -ArgumentList $vbs }
+if (Ask 'Launch MODI now?' $true) { Start-Process -FilePath $PsExe -ArgumentList (Get-ModiLaunchArgs 'Launch') -WindowStyle Hidden }
 Finish 0

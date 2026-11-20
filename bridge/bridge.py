@@ -62,7 +62,8 @@ DEFAULTS = {
     "host": "127.0.0.1", "port": 8765, "mode": "api",
     "hermes": {"api_url": "http://127.0.0.1:8642", "api_key": "", "read_key_from_hermes_env": True,
                "model": "hermes-agent", "session_id": "jarvis-hud", "timeout_seconds": 180,
-               "cli_command": "hermes", "display_primary": "",       # "" = read the model name from Hermes' own config.yaml
+               "cli_command": "hermes", "autostart": True,    # autostart: start Hermes' gateway together with the bridge when it is installed but not running
+               "display_primary": "",       # "" = read the model name from Hermes' own config.yaml
                "display_fallback": "", "display_next_job": ""},   # shown in the Hermes status tile only when set
     "stt": {"model": "base", "device": "auto", "language": "en", "vad": True, "beam_size": 1},
     "tts": {"engine": "auto", "voice": "en_GB-alan-medium", "length_scale": 1.0, "max_chars": 700,
@@ -143,36 +144,22 @@ def load_config():
 CFG = load_config()
 
 import modi_features  # noqa: E402  (feature framework, see modi_features.py)
+import modi_hermes  # noqa: E402  (finds / installs / connects Hermes, see modi_hermes.py)
 import modi_meta  # noqa: E402
 import modi_update  # noqa: E402
 VERSION = modi_meta.VERSION
 
 
+HM = modi_hermes.HermesManager(CFG, DATA_DIR, say=lambda m: print(m, flush=True))
+
+
 def hermes_home_candidates():
-    c = []
-    if os.getenv("HERMES_HOME"):
-        c.append(Path(os.environ["HERMES_HOME"]))
-    if os.name == "nt" and os.getenv("LOCALAPPDATA"):      # Windows: %LOCALAPPDATA%\\hermes
-        c.append(Path(os.environ["LOCALAPPDATA"]) / "hermes")
-    c.append(Path.home() / ".hermes")                      # macOS / Linux (and Windows fallback)
-    return c
+    return HM.home_candidates()
 
 
 def resolve_api_key():
-    key = (CFG["hermes"].get("api_key") or "").strip()
-    if key or not CFG["hermes"].get("read_key_from_hermes_env", True):
-        return key
-    for home in hermes_home_candidates():
-        envf = home / ".env"
-        try:
-            for line in envf.read_text(encoding="utf-8", errors="ignore").splitlines():
-                m = re.match(r"\s*API_SERVER_KEY\s*=\s*(.*)", line)
-                if m:
-                    return m.group(1).strip().strip('"').strip("'")
-        except OSError:
-            continue
-    return ""
-
+    """MODI config > the key Hermes itself is configured with (.env / config.yaml) > MODI's saved copy."""
+    return HM.resolve_api_key()
 
 
 # --------------------------------------------------------------------------- profile (name / city / teams)
@@ -339,9 +326,10 @@ def add_history(role, text, kind="chat"):
 
 # --------------------------------------------------------------------------- Hermes client
 class HermesError(Exception):
-    def __init__(self, msg, status=502):
+    def __init__(self, msg, status=502, fix=""):
         super().__init__(msg)
         self.status = status
+        self.fix = fix          # "setup" = the HUD should offer its Connect-Hermes / sign-in wizard
 
 
 _hermes_lock = asyncio.Lock()
@@ -361,8 +349,8 @@ async def hermes_api(user_content):
     h = CFG["hermes"]
     key = resolve_api_key()
     if not key:
-        raise HermesError("No Hermes API key. Set API_SERVER_KEY in Hermes (see INSTALL-NOTES.md) and put the same value in bridge/config.json -> hermes.api_key.", 500)
-    url = h["api_url"].rstrip("/") + "/v1/chat/completions"
+        raise HermesError("Hermes isn't connected yet. Press Fix it and I'll set it up.", 503, "setup")
+    url = HM.api_url() + "/v1/chat/completions"
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json",
                "X-Hermes-Session-Id": STATE["session_id"]}
     body = {"model": h["model"], "stream": False,
@@ -372,29 +360,35 @@ async def hermes_api(user_content):
         async with ClientSession(timeout=ClientTimeout(total=h["timeout_seconds"])) as s:
             async with s.post(url, json=body, headers=headers) as r:
                 txt = await r.text()
-                if r.status == 401:
-                    raise HermesError("Hermes rejected the API key (401). Check hermes.api_key matches API_SERVER_KEY.", 502)
-                if r.status >= 400:
-                    raise HermesError(f"Hermes API error {r.status}: {txt[:300]}", 502)
-                data = json.loads(txt)
-    except HermesError:
-        raise
+                code = r.status
     except asyncio.TimeoutError:
         raise HermesError("Hermes took too long to answer (timeout).", 504)
-    except ClientError as e:
-        raise HermesError(f"Can't reach the Hermes API at {h['api_url']} ({type(e).__name__}). Is the gateway running with API_SERVER_ENABLED=true?", 503)
-    try:
-        choice = data["choices"][0]
-        reply = _content_text(choice["message"].get("content"))
-    except Exception:
-        raise HermesError("Unexpected reply format from Hermes.", 502)
-    return reply.strip() or "(Hermes returned an empty reply.)"
+    except ClientError:
+        HM.invalidate()
+        raise HermesError("Can't reach Hermes right now. Press Fix it and I'll start it.", 503, "setup")
+    res = modi_hermes.interpret_chat(code, txt, key)
+    if res["ok"]:
+        HM.note_chat_ok()
+        return res["reply"] or "(Hermes returned an empty reply.)"
+    kind = res.get("kind")
+    if kind == "no_provider":
+        HM.chat_state = "no_provider"
+        raise HermesError("Hermes isn't signed in to an AI yet. Choose ChatGPT, Claude, Grok or a local model.", 503, "setup")
+    if kind in ("auth", "no_key"):
+        HM.invalidate()
+        raise HermesError("Hermes and I lost our secure link. Press Fix it to reconnect.", 502, "setup")
+    if kind == "unreachable":
+        raise HermesError("Can't reach Hermes right now. Press Fix it and I'll start it.", 503, "setup")
+    if kind == "provider_auth":
+        HM.chat_state = "no_provider"
+        raise HermesError(res["error"], 502, "setup")
+    raise HermesError(res["error"] if res.get("error") else f"Hermes API error {code}", 502)
 
 
 async def hermes_cli(prompt_text, image_path=None):
     """Fallback: `hermes -z "<prompt>"`. Continuity is approximated by replaying recent turns in the prompt."""
     h = CFG["hermes"]
-    exe = shutil.which(h["cli_command"]) or h["cli_command"]
+    exe = HM.find_cli() or h["cli_command"]
     turns = [t for t in STATE["history"] if t.get("kind") in ("chat", "look")][-6:]
     uname = (CFG.get('profile') or {}).get('name') or 'User'
     ctx = "".join(f"{uname if t['role']=='user' else 'Hermes'}: {t['text']}\n" for t in turns)
@@ -451,10 +445,10 @@ async def hermes_health():
     if _health_cache["v"] is not None and now - _health_cache["t"] < 4:
         return _health_cache["v"]
     if CFG["mode"] == "cli":
-        ok = shutil.which(CFG["hermes"]["cli_command"]) is not None
+        ok = HM.find_cli() is not None
         v = {"mode": "cli", "reachable": ok, "detail": "hermes CLI found" if ok else "hermes CLI not on PATH"}
     else:
-        url = CFG["hermes"]["api_url"].rstrip("/") + "/health"
+        url = HM.api_url() + "/health"
         try:
             async with ClientSession(timeout=ClientTimeout(total=2)) as s:
                 async with s.get(url) as r:
@@ -777,7 +771,9 @@ async def h_quit(request):
 async def h_health(request):
     hv = await hermes_health()
     h = CFG["hermes"]
+    st = await asyncio.get_running_loop().run_in_executor(None, HM.status)
     return web.json_response({
+        "setup": {"state": st["state"], "provider": st["provider"], "model": st["model"], "busy": st["busy"]},
         "ok": True, "bridge": True, "version": VERSION, "session_id": STATE["session_id"], "mode": CFG["mode"],
         "hermes": hv,
         "display": {"primary": hermes_model_label(), "fallback": h["display_fallback"], "next_job": h["display_next_job"]},
@@ -788,6 +784,95 @@ async def h_health(request):
         "profile": CFG.get("profile") or {},
         "assistant": {"name": assistant_name(), "wake_phrase": (CFG.get("assistant") or {}).get("wake_phrase") or "Hey " + assistant_name()},
     })
+
+
+# ---- Hermes connection wizard (see modi_hermes.py) -----------------------------------------------------------
+async def _body(request):
+    try:
+        b = await request.json()
+        return b if isinstance(b, dict) else {}
+    except Exception:  # noqa
+        return {}
+
+
+async def _in_thread(fn, *a):
+    return await asyncio.get_running_loop().run_in_executor(None, lambda: fn(*a))
+
+
+def _job_reply(res):
+    job, started = res
+    return web.json_response({"ok": True, "job": job, "started": started})
+
+
+async def h_setup_status(request):
+    st = await _in_thread(HM.status, request.query.get("fresh") == "1")
+    return web.json_response({"ok": True, **st, "providers": [{"id": k, "label": v["label"], "kind": v["kind"]} for k, v in modi_hermes.PROVIDERS.items()]})
+
+
+async def h_setup_install(request):
+    return _job_reply(await _in_thread(HM.start_install))
+
+
+async def h_setup_fix(request):
+    return _job_reply(await _in_thread(HM.start_fix))
+
+
+async def h_setup_provider(request):
+    body = await _body(request)
+    try:
+        return _job_reply(await _in_thread(HM.start_provider, body))
+    except modi_hermes.SetupError as e:
+        return jerr(str(e), 400)
+
+
+async def h_setup_pull(request):
+    body = await _body(request)
+    try:
+        return _job_reply(await _in_thread(HM.start_pull, str(body.get("model") or "")))
+    except modi_hermes.SetupError as e:
+        return jerr(str(e), 400)
+
+
+async def h_setup_job(request):
+    j = HM.job(request.match_info["jid"])
+    return web.json_response({"ok": True, "job": j}) if j else jerr("No such job.", 404)
+
+
+async def h_setup_job_input(request):
+    body = await _body(request)
+    ok = await _in_thread(HM.send_input, request.match_info["jid"], str(body.get("text") or "")[:600])
+    return web.json_response({"ok": bool(ok)})
+
+
+async def h_setup_job_cancel(request):
+    return web.json_response({"ok": await _in_thread(HM.cancel, request.match_info["jid"])})
+
+
+async def h_setup_test(request):
+    res = await _in_thread(HM.test_chat)
+    if not res["ok"] and res.get("kind") in ("no_provider", "provider_auth"):
+        HM.chat_state = "no_provider"
+    elif res["ok"]:
+        HM.note_chat_ok()
+    lab, model = HM.provider_label()
+    return web.json_response({"ok": True, "result": res, "provider": lab, "model": model})
+
+
+def _hermes_boot():
+    """At bridge start: remember Hermes' key and, if Hermes is installed but idle, start it (so it comes up with MODI)."""
+    try:
+        if os.getenv("MODI_NO_BOOT"):          # tests: don't auto-start Hermes
+            return
+        src = HM.adopt_key()
+        if src:
+            print(f"[bridge] adopted the Hermes API key from {src}", flush=True)
+        if CFG["hermes"].get("autostart", True) and CFG["mode"] == "api" and HM.find_cli() and HM.resolve_api_key() \
+                and HM.api_enabled() and not HM.healthy():
+            print("[bridge] Hermes is installed but not running - starting it", flush=True)
+            ok = HM.start_gateway()
+            print("[bridge] Hermes " + ("is up" if ok else "did not start (the HUD will offer Fix it)"), flush=True)
+    except Exception as e:  # noqa
+        print(f"[bridge] Hermes auto-start skipped: {type(e).__name__}: {e}", flush=True)
 
 
 async def h_system(request):
@@ -819,7 +904,7 @@ async def h_chat(request):
     try:
         reply = await hermes_text(text)
     except HermesError as e:
-        return jerr(str(e), e.status)
+        return web.json_response({"ok": False, "error": str(e), "fix": e.fix}, status=e.status)
     add_history("assistant", reply)
     return web.json_response({"ok": True, "reply": reply, "ms": int((time.time() - t0) * 1000),
                               "session_id": STATE["session_id"]})
@@ -956,6 +1041,7 @@ async def h_feature_js(request):
 
 
 async def _on_startup(app):
+    threading.Thread(target=_hermes_boot, daemon=True, name="modi-hermes-boot").start()
     await FEATURES.start_enabled()
 
 
@@ -1060,6 +1146,11 @@ def make_app():
         web.get("/api/profile", h_profile_get), web.post("/api/profile", h_profile_set),
         web.get("/api/update", h_update), web.post("/api/update/check", h_update_check),
         web.post("/api/update/install", h_update_install), web.post("/api/update/settings", h_update_settings),
+        web.get("/api/setup/status", h_setup_status), web.post("/api/setup/install", h_setup_install),
+        web.post("/api/setup/fix", h_setup_fix), web.post("/api/setup/provider", h_setup_provider),
+        web.post("/api/setup/pull", h_setup_pull), web.post("/api/setup/test", h_setup_test),
+        web.get("/api/setup/job/{jid}", h_setup_job), web.post("/api/setup/job/{jid}/input", h_setup_job_input),
+        web.post("/api/setup/job/{jid}/cancel", h_setup_job_cancel),
         web.get("/api/events", h_events), web.post("/api/confirm", h_confirm),
         web.route("*", "/api/m/{fid}/{tail:.*}", h_feature_http),
         web.get("/modules/{fid:[a-z0-9_]+}.js", h_feature_js),
@@ -1129,6 +1220,23 @@ def main():
             update_profile(body)
             print(f"[bridge] profile saved, but the city was not set: {e}", flush=True)
             sys.exit(0)
+    if "--connect-hermes" in sys.argv:     # used by the installers: key + API server + start Hermes, no typing (same steps as the HUD's "Fix it")
+        job, _ = HM.start_fix()
+        seen = set()
+        while True:
+            j = HM.job(job["id"])
+            for line in j["log"]:
+                if line not in seen:
+                    seen.add(line)
+                    print("[hermes] " + line, flush=True)
+            if j["status"] != "running":
+                break
+            time.sleep(1)
+        if j["status"] == "done":
+            print("[hermes] connected", flush=True)
+            sys.exit(0)
+        print("[hermes] " + (j["error"] or "not connected"), flush=True)
+        sys.exit(1)
     if "--install-deps" in sys.argv:       # pip requirements of the features switched on in Settings (used by the installers)
         reqs = modi_features.deps_for_enabled(FEATURES)
         if reqs:
@@ -1141,8 +1249,8 @@ def main():
     if host not in ("127.0.0.1", "localhost"):
         print("[bridge] Refusing to bind anything but 127.0.0.1 (the Hermes API can run commands).", flush=True)
         host = "127.0.0.1"
-    print(f"[bridge] Jarvis HUD bridge  mode={CFG['mode']}  hermes={CFG['hermes']['api_url']}", flush=True)
-    print(f"[bridge] key: {'found' if resolve_api_key() else 'MISSING (see INSTALL-NOTES.md)'}", flush=True)
+    print(f"[bridge] Jarvis HUD bridge  mode={CFG['mode']}  hermes={HM.api_url()}", flush=True)
+    print(f"[bridge] Hermes key: {'found' if resolve_api_key() else 'not set yet - the HUD will offer to set it up'}", flush=True)
     warmup()
     print(f"[bridge] open http://127.0.0.1:{port}", flush=True)
     web.run_app(make_app(), host=host, port=port, print=None, shutdown_timeout=1.0)

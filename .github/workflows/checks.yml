@@ -63,6 +63,9 @@ jobs:
             }
           '
 
+      - name: No Windows Script Host
+        run: bash tools/check-no-wsh.sh
+
       - name: Secret pattern
         run: |
           set -euo pipefail
