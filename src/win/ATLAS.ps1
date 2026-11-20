@@ -25,8 +25,33 @@ function Show-Msg([string]$Text) {
 function Test-Bridge {
     try { $r = Invoke-WebRequest -UseBasicParsing -Uri "$Url/api/health" -TimeoutSec 2; return ($r.StatusCode -eq 200) } catch { return $false }
 }
+function Get-InstalledVersion {
+    $m = Join-Path $Root 'bridge\atlas_meta.py'
+    if (Test-Path $m) { $t = Get-Content $m -Raw; if ($t -match 'VERSION\s*=\s*"([^"]+)"') { return $Matches[1] } }
+    return ''
+}
+function Get-RunningVersion {
+    try { $h = Invoke-RestMethod -UseBasicParsing -Uri "$Url/api/health" -TimeoutSec 3; return [string]$h.version } catch { return $null }
+}
+# Another bridge already answering on our port may be an OLDER copy (MODI 1.1.x, a hand-started dev copy, a leftover from before  # legacy-modi
+# an update). Showing its window would show the old HUD and its old errors, so stop it and start the installed one.
+function Stop-OtherBridge([string]$found, [string]$want) {
+    Write-Host "A different ATLAS bridge (version $found) is running; this install is $want. Stopping it."
+    try { Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$Url/api/quit" -TimeoutSec 3 | Out-Null } catch { }
+    for ($i = 0; $i -lt 20; $i++) { if (-not (Test-Bridge)) { return }; Start-Sleep -Milliseconds 500 }
+    try {
+        Get-CimInstance Win32_Process -Filter "Name like 'python%'" | Where-Object { $_.CommandLine -like '*bridge.py*' } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    } catch { }
+    for ($i = 0; $i -lt 20; $i++) { if (-not (Test-Bridge)) { return }; Start-Sleep -Milliseconds 500 }
+}
 function Start-AtlasBridge {
-    if (Test-Bridge) { return $true }
+    if (Test-Bridge) {
+        $want = Get-InstalledVersion; $found = Get-RunningVersion
+        if ((-not $want) -or ($null -eq $found) -or ($found -eq $want)) { return $true }
+        Stop-OtherBridge $found $want
+        if (Test-Bridge) { Show-Msg "Another program is using ATLAS's port $Port and could not be stopped.`n`nRestart the computer, then open ATLAS again."; return $false }
+    }
     if (-not (Test-Path $Py)) { Show-Msg "ATLAS is not installed correctly (Python environment missing).`nRun ATLAS-Setup.bat again."; return $false }
     New-Item -ItemType Directory -Force -Path $Logs | Out-Null
     $out = Join-Path $Logs 'bridge.log'; $err = Join-Path $Logs 'bridge.err.log'
@@ -79,6 +104,74 @@ public static class AtlasWin {
         try { Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.Interaction]::AppActivate($gp.Id); return $true } catch { return $false }
     }
 }
+# ---- taskbar identity: without this the Edge/Chrome app window shows a generic globe (or the browser's icon) on the taskbar ----
+# Give the window ATLAS's AppUserModelID (the same ID the installer puts on the ATLAS Start Menu / desktop shortcuts) plus a relaunch
+# command, name and icon, so Windows groups it under the ATLAS shortcut and shows atlas.ico; also set the window's own icon.
+$AtlasAppId = 'ATLAS.CommandInterface'   # must match $AtlasAppId in installer-body.ps1
+function Set-AtlasWindowIdentity($gp) {
+    $ico = Join-Path $Root 'assets\atlas.ico'
+    try {
+        if (-not ('AtlasTaskbar' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class AtlasTaskbar {
+    [StructLayout(LayoutKind.Sequential, Pack = 4)] private struct PropKey { public Guid fmtid; public uint pid; }
+    [StructLayout(LayoutKind.Explicit)] private struct PropVar { [FieldOffset(0)] public ushort vt; [FieldOffset(8)] public IntPtr p; [FieldOffset(16)] public IntPtr pad; }
+    [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
+    private interface IPropertyStore {
+        void GetCount(out uint c);
+        void GetAt(uint i, out PropKey k);
+        void GetValue(ref PropKey k, out PropVar v);
+        void SetValue(ref PropKey k, ref PropVar v);
+        void Commit();
+    }
+    [DllImport("shell32.dll")] private static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore ps);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr LoadImage(IntPtr hinst, string name, uint type, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    private static void Set(IPropertyStore ps, uint pid, string val) {
+        PropKey k = new PropKey(); k.fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"); k.pid = pid;
+        PropVar v = new PropVar(); v.vt = 31; v.p = Marshal.StringToCoTaskMemUni(val);
+        try { ps.SetValue(ref k, ref v); } finally { Marshal.FreeCoTaskMem(v.p); }
+    }
+    // pids: 2 RelaunchCommand, 3 RelaunchIconResource, 4 RelaunchDisplayNameResource, 5 ID
+    public static void Apply(IntPtr hwnd, string appId, string relaunch, string icon, string name) {
+        Guid iid = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+        IPropertyStore ps;
+        if (SHGetPropertyStoreForWindow(hwnd, ref iid, out ps) != 0 || ps == null) { return; }
+        if (!string.IsNullOrEmpty(icon)) { Set(ps, 3, icon + ",0"); }
+        Set(ps, 2, relaunch); Set(ps, 4, name); Set(ps, 5, appId);
+        ps.Commit();
+        Marshal.ReleaseComObject(ps);
+    }
+    public static void SetIcon(IntPtr hwnd, string icon) {
+        IntPtr big = LoadImage(IntPtr.Zero, icon, 1, 32, 32, 0x10);     // IMAGE_ICON, LR_LOADFROMFILE
+        IntPtr small = LoadImage(IntPtr.Zero, icon, 1, 16, 16, 0x10);
+        if (big != IntPtr.Zero) { SendMessage(hwnd, 0x80, (IntPtr)1, big); }       // WM_SETICON ICON_BIG
+        if (small != IntPtr.Zero) { SendMessage(hwnd, 0x80, IntPtr.Zero, small); }  // WM_SETICON ICON_SMALL
+    }
+}
+'@
+        }
+        $h = $gp.MainWindowHandle
+        if ($h -eq [IntPtr]::Zero) { return $false }
+        $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $relaunch = '"' + $ps + '" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + (Join-Path $PSScriptRoot 'ATLAS.ps1') + '" -Mode Launch'
+        if (-not (Test-Path -LiteralPath $ico)) { $ico = '' }
+        [AtlasTaskbar]::Apply($h, $AtlasAppId, $relaunch, $ico, 'ATLAS')
+        if ($ico) { [AtlasTaskbar]::SetIcon($h, $ico) }
+        return $true
+    } catch { return $false }
+}
+function Wait-AtlasWindowIdentity([string]$appdata) {
+    # the window appears a moment after the browser starts; give it up to ~20 s, then set it again once the page (favicon) has loaded
+    for ($i = 0; $i -lt 40; $i++) {
+        $gp = Get-AppWindowPid $appdata
+        if ($gp) { [void](Set-AtlasWindowIdentity $gp); Start-Sleep -Seconds 3; [void](Set-AtlasWindowIdentity $gp); return $true }
+        Start-Sleep -Milliseconds 500
+    }
+    return $false
+}
 function Find-Browser {
     $cands = @()
     foreach ($exe in @('msedge.exe', 'chrome.exe')) {
@@ -117,7 +210,7 @@ switch ($Mode) {
         try { $held = $mutex.WaitOne(150000) } catch [System.Threading.AbandonedMutexException] { $held = $true }
         try {
             if (-not (Start-AtlasBridge)) { exit 1 }
-            if (Show-ExistingWindow $appdata) { exit 0 }
+            if (Show-ExistingWindow $appdata) { $gp = Get-AppWindowPid $appdata; if ($gp) { [void](Set-AtlasWindowIdentity $gp) }; exit 0 }
         } finally { if ($held) { try { $mutex.ReleaseMutex() } catch { } } }
         $browser = Find-Browser
         if ($browser) {
@@ -125,6 +218,7 @@ switch ($Mode) {
             $appArgs = @("--app=$Url", "--user-data-dir=`"$appdata`"", '--window-size=1600,900', '--no-first-run',
                       '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required')
             Start-Process -FilePath $browser -ArgumentList $appArgs
+            [void](Wait-AtlasWindowIdentity $appdata)
         } else {
             Start-Process $Url                                       # no Edge/Chrome found: default browser tab
         }

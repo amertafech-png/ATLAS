@@ -93,6 +93,9 @@ jobs:
             }
           '
 
+      - name: Links open in the default browser; taskbar AppUserModelID matches
+        run: bash tools/check-default-browser.sh
+
       - name: No Windows Script Host
         run: bash tools/check-no-wsh.sh
       - name: No leftover old product name  # legacy-modi
