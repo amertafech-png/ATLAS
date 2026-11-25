@@ -10,6 +10,8 @@ voices/
 google_token.json
 google_client_secret.json
 google_oauth_pending.json
+google_accounts.json
+google_accounts/
 # development leftovers (not part of the project)
 index-v1.html
 index-v2.html

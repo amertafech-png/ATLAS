@@ -120,7 +120,8 @@ def system_prompt():
         "Calendar: ATLAS reads the user's calendar itself (their Google Calendar, when that sign-in is already on this computer, or a calendar link they added) "
         "and adds the relevant events to the message as [ATLAS calendar]; answer from those events only. "
         "Never use your own Google/Microsoft calendar connectors or skills for it, never start a Google sign-in or paste OAuth links for the calendar, "
-        "and never search the user's files or folders for credentials, tokens or client secrets. If no calendar is connected, tell them to say connect Google or add a link in Settings."
+        "and never search the user's files or folders for credentials, tokens or client secrets. If no calendar is connected, tell them to say connect Google or add a link in Settings. "
+        "If they want a second Google account, tell them to say connect another Google account."
     )
 
 
@@ -1604,19 +1605,40 @@ async def h_calendar(request):
         return shown, now, err
     evs, now, err = await loop.run_in_executor(None, work)
     sources, gst = _calendar_payload(evs, err)
-    public = [{"title": e["title"], "start": _iso(e["start"]), "end": _iso(e["end"]), "all_day": e["all_day"], "location": e["location"], "source": e["source"]} for e in evs]
+    public = [{"title": e["title"], "start": _iso(e["start"]), "end": _iso(e["end"]), "all_day": e["all_day"], "location": e["location"], "source": e["source"], "account": e.get("account") or ""} for e in evs]
     return web.json_response({"ok": True, "events": public, "now": _iso(now), "sources": sources, "configured": INFO.calendar_ready(), "google": gst})
 
 
 async def h_google_connect(request):
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, GOOGLE.connect)
+    try:
+        body_in = await request.json()
+    except Exception:
+        body_in = {}
+    if not isinstance(body_in, dict):
+        body_in = {}
+    another = bool(body_in.get("another"))
+    result = await loop.run_in_executor(None, lambda: GOOGLE.connect(another=another))
     msg = (result or {}).get("message") or "I couldn't finish connecting Google."
     body = {"ok": bool((result or {}).get("connected")), "message": msg, "google": GOOGLE.status()}
     if not body["ok"]:
         body["error"] = msg
         return web.json_response(body, status=400)
     return web.json_response(body)
+
+
+async def h_google_remove(request):
+    try:
+        body_in = await request.json()
+    except Exception:
+        return jerr("Send JSON.", 400)
+    if not isinstance(body_in, dict):
+        return jerr("Send JSON.", 400)
+    key = str(body_in.get("id") or body_in.get("name") or body_in.get("label") or "")
+    got = GOOGLE.remove(key)
+    if not got:
+        return web.json_response({"ok": False, "error": "No such Google account.", "google": GOOGLE.status()}, status=404)
+    return web.json_response({"ok": True, "removed": got.get("label") or "", "google": GOOGLE.status()})
 
 
 async def h_calendar_sources(request):
@@ -1797,7 +1819,7 @@ def make_app():
         # feature framework
         web.get("/api/features", h_features), web.post("/api/features/{fid}", h_feature_set),
         web.get("/api/profile", h_profile_get), web.post("/api/profile", h_profile_set),
-        web.get("/api/calendar", h_calendar), web.post("/api/calendar/google/connect", h_google_connect),
+        web.get("/api/calendar", h_calendar), web.post("/api/calendar/google/connect", h_google_connect), web.post("/api/calendar/google/remove", h_google_remove),
         web.get("/api/calendar/sources", h_calendar_sources), web.post("/api/calendar/sources", h_calendar_sources), web.post("/api/calendar/sources/remove", h_calendar_sources),
         web.get("/api/reminders", h_reminders), web.post("/api/reminders/quick", h_reminder_quick), web.post("/api/reminders/{rid:[a-f0-9]+}/{act:cancel|dismiss}", h_reminder_act),
         web.get("/api/scores", h_scores), web.get("/api/brief", h_brief), web.post("/api/brief/morning", h_brief_morning),
