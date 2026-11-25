@@ -43,6 +43,7 @@ jobs:
       - name: Calendar, live scores, daily brief (pure Python, no network)
         run: |
           python bridge/dev/test_calendar.py
+          python bridge/dev/test_google_calendar.py
           python bridge/dev/test_scores.py
           python bridge/dev/test_info.py
 

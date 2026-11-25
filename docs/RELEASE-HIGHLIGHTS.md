@@ -1,10 +1,11 @@
 ## ATLAS 1.4.4
 
-**The Sports panel keeps itself up to date.**
+**The Sports panel keeps itself up to date, and calendar questions use the same Google sign-in as your email.**
 
 - **Scores refresh on their own.** While one of your teams is playing, the Sports panel asks again about every 15 seconds. When it is only showing a final or an upcoming game, it waits about 5 minutes. You don't have to restart ATLAS or press refresh.
 - **Finals and later games stay visible.** A weekend result, or a game a few days out, no longer disappears just because it isn't yesterday or today. The panel shows the live score during a game, and the latest final or the next game otherwise.
 - **A dead score service doesn't blank the panel.** If ESPN doesn't answer, the last scores stay on screen with a small **stale** mark. Only the sports and teams you still follow are requested, and nothing is invented.
+- **Calendar uses the Google sign-in that already reads your email.** Ask what's on today, what's tomorrow, or what's your next meeting. ATLAS reads Google Calendar with the token Hermes saved for Gmail. If that sign-in doesn't include the calendar, say **connect Google** once. It opens in your usual browser, and the permission stays on this computer. An .ics file or a secret calendar link still works.
 
 ## ATLAS 1.4.3
 

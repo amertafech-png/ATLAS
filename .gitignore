@@ -6,6 +6,10 @@ __pycache__/
 # local state / models
 state.json
 voices/
+# Google sign-in (never commit a token or client secret)
+google_token.json
+google_client_secret.json
+google_oauth_pending.json
 # development leftovers (not part of the project)
 index-v1.html
 index-v2.html

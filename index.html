@@ -958,8 +958,13 @@ function renderCalendar(){
   const el=document.getElementById('calbody'),tg=document.getElementById('caltag');if(!el)return;
   if(!CALS.loaded){el.innerHTML='<div class="ph"><div>Loading…</div></div>';return}
   if(!CALS.configured){tg.textContent='Not connected';tg.className='tag';
-    el.innerHTML='<div class="ph" style="padding:1vh 0"><div>No calendar yet</div><div class="tag">Add a calendar link or .ics file</div><button class="btn sel" id="cal-add">Add a calendar</button></div>';
-    document.getElementById('cal-add').onclick=()=>{ATLAS.openSettings('general')};return}
+    const g=CALS.google||{};
+    const note=g.email?'Say “connect Google” — same sign-in as your email':'Add a calendar link or .ics file';
+    const go=g.needs_connect?'<button class="btn sel" id="cal-panel-go">Connect Google</button>':'';
+    el.innerHTML='<div class="ph" style="padding:1vh 0"><div>No calendar yet</div><div class="tag">'+esc(note)+'</div>'+go+'<button class="btn'+(g.needs_connect?'':' sel')+'" id="cal-add">Add a calendar</button></div>';
+    document.getElementById('cal-add').onclick=()=>{ATLAS.openSettings('general')};
+    const b=document.getElementById('cal-panel-go');if(b)b.onclick=()=>{connectGoogle(b).catch(function(){})};
+    return}
   const bad=(CALS.sources||[]).filter(x=>!x.ok&&x.error);
   const now=CALS.now?new Date(CALS.now):new Date(),today=dayKey(now),tom=dayKey(new Date(now.getTime()+864e5));
   let html='',last='',n=0,todayN=0;
@@ -972,9 +977,14 @@ function renderCalendar(){
   if(bad.length)html+='<div class="lab meta" style="padding-top:.8vh;color:var(--warn)">'+esc(bad[0].name)+': '+esc(bad[0].error)+'</div>';
   el.innerHTML=html;tg.textContent=bad.length?'Check link':todayN?todayN+' today':'Clear';tg.className='tag'+(bad.length?' off':todayN?' live':'');
 }
+async function connectGoogle(btn){
+  if(btn){btn.disabled=true;btn.textContent='Opening your browser…'}
+  try{const j=await post('/api/calendar/google/connect',{});loadCalendar(true);if(document.getElementById('calblk'))drawCalBlock(j.message||'Google Calendar is connected.');return j}
+  catch(e){if(btn){btn.disabled=false;btn.textContent='Connect Google'}const m=document.getElementById('cal-msg');if(m){m.textContent=e.message;m.style.color='var(--warn)'}throw e}
+}
 async function loadCalendar(force){
   if(!BR.online)return;
-  try{const j=await api('/api/calendar?days=7'+(force?'&refresh=1':''));CALS.events=j.events||[];CALS.configured=!!j.configured;CALS.sources=j.sources||[];CALS.now=j.now;CALS.loaded=true}
+  try{const j=await api('/api/calendar?days=7'+(force?'&refresh=1':''));CALS.events=j.events||[];CALS.configured=!!j.configured;CALS.sources=j.sources||[];CALS.google=j.google||{};CALS.now=j.now;CALS.loaded=true}
   catch(e){CALS.loaded=true;CALS.configured=CALS.configured||false}
   renderCalendar();
 }
@@ -1903,12 +1913,16 @@ function genRow(s){
 /* ---- Settings: calendar sources (an .ics file path, or a secret link from Google / Outlook; no sign-in) ---- */
 async function drawCalBlock(note){
   const el=document.getElementById('calblk');if(!el)return;
-  let srcs=[];try{srcs=(await api('/api/calendar/sources')).sources||[]}catch(e){}
-  el.innerHTML=(srcs.length?srcs.map(x=>'<div class="calsrc" data-src="'+esc(x.id)+'"><span class="n"><b>'+esc(x.name)+'</b><small>'+esc(x.hint)+(x.error?' · <span style="color:var(--warn)">'+esc(x.error)+'</span>':x.ok?' · '+x.count+' events':'')+'</small></span><button class="btn" data-calrm="'+esc(x.id)+'" aria-label="Remove calendar '+esc(x.name)+'">Remove</button></div>').join(''):'<div class="lab" style="padding:.6vh 0">No calendar connected yet.</div>')+
+  let srcs=[],g={};try{const j=await api('/api/calendar/sources');srcs=j.sources||[];g=j.google||{}}catch(e){}
+  const grow=g.connected?'<div class="calsrc" data-src="google"><span class="n"><b>Google</b><small>'+esc(g.hint||'Google Calendar')+'</small></span></div>':'';
+  const gbtn=(!g.connected&&g.needs_connect)?'<div class="prow"><button class="btn sel" id="cal-go">Connect Google</button><span class="msg">One time, in your browser. Same Google app as your email.</span></div>':'';
+  el.innerHTML=grow+(srcs.length?srcs.map(x=>'<div class="calsrc" data-src="'+esc(x.id)+'"><span class="n"><b>'+esc(x.name)+'</b><small>'+esc(x.hint)+(x.error?' · <span style="color:var(--warn)">'+esc(x.error)+'</span>':x.ok?' · '+x.count+' events':'')+'</small></span><button class="btn" data-calrm="'+esc(x.id)+'" aria-label="Remove calendar '+esc(x.name)+'">Remove</button></div>').join(''):(g.connected?'':'<div class="lab" style="padding:.6vh 0">No calendar connected yet.</div>'))+
+    gbtn+
     '<div class="calform"><input id="cal-name" maxlength="40" placeholder="Name (e.g. Work)" aria-label="Calendar name"><input id="cal-val" placeholder="Secret link (https://…) or path to an .ics file" aria-label="Calendar link or .ics file path" autocomplete="off"><button class="btn sel" id="cal-do">Add</button></div>'+
     '<div class="lab" id="cal-msg" style="text-transform:none;letter-spacing:.04em">'+esc(note||'')+'</div>'+
-    '<details class="sayhelp"><summary>Where do I find the link?</summary><p><b>Google Calendar:</b> Settings, pick the calendar, “Integrate calendar”, copy “Secret address in iCal format”. <b>Outlook.com:</b> Settings, Calendar, Shared calendars, Publish a calendar, copy the ICS link. <b>A file:</b> type the full path of an .ics file on this computer. Treat a secret link like a password: anyone who has it can read the calendar. ATLAS stores it only on this computer and never shows it again after you add it.</p></details>';
+    '<details class="sayhelp"><summary>Where do I find the link?</summary><p><b>Google:</b> if ATLAS can already read your email, press <b>Connect Google</b> once. It opens in your usual browser and uses the same Google app Hermes saved. Nothing new to download, and the permission stays on this computer. <b>Or a link:</b> Google Calendar → Settings → your calendar → “Integrate calendar” → “Secret address in iCal format”. <b>Outlook.com:</b> Settings, Calendar, Shared calendars, Publish a calendar, copy the ICS link. <b>A file:</b> type the full path of an .ics file on this computer. Treat a secret link like a password. ATLAS stores it only on this computer and never shows it again after you add it.</p></details>';
   el.querySelectorAll('[data-calrm]').forEach(b=>b.onclick=async()=>{try{await post('/api/calendar/sources/remove',{id:b.dataset.calrm});loadCalendar(true);drawCalBlock('Removed.')}catch(e){drawCalBlock(e.message)}});
+  const go=document.getElementById('cal-go');if(go)go.onclick=()=>{connectGoogle(go).catch(function(){})};
   document.getElementById('cal-do').onclick=async()=>{const m=document.getElementById('cal-msg');m.textContent='Adding…';
     try{const j=await post('/api/calendar/sources',{name:document.getElementById('cal-name').value,value:document.getElementById('cal-val').value});loadCalendar(true);drawCalBlock(j.message||'Added.')}catch(e){m.textContent=e.message;m.style.color='var(--warn)'}};
 }

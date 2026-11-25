@@ -9,6 +9,7 @@ import urllib.request
 from datetime import datetime, timedelta
 
 import atlas_calendar as CAL
+import atlas_google
 import atlas_scores as SC
 
 WMO = {0: "clear", 1: "mostly clear", 2: "partly cloudy", 3: "overcast", 45: "foggy", 48: "foggy", 51: "light drizzle", 53: "drizzle", 55: "heavy drizzle", 56: "freezing drizzle", 57: "freezing drizzle",
@@ -130,8 +131,43 @@ class Info:
         f = getattr(self.env, "now", None)
         return f() if f else self.env.calendar.now_dt()
 
+    def _google(self):
+        return getattr(self.env, "google", None)
+
+    def calendar_ready(self):
+        if self.env.calendar.sources():
+            return True
+        g = self._google()
+        return bool(g is not None and g.connected())
+
+    def events_between(self, start, end, force=False):
+        """ICS sources plus Google Calendar. The error string is spoken only when Google was the source and it failed."""
+        evs = []
+        try:
+            evs.extend(self.env.calendar.events(start, end, force))
+        except Exception:
+            evs = []
+        err = ""
+        g = self._google()
+        if g is not None and g.connected():
+            try:
+                evs.extend(g.events(start, end, force=force))
+            except atlas_google.GoogleError as e:
+                err = str(e)
+            except Exception:
+                err = "I couldn't reach Google Calendar just now."
+        seen, out = set(), []
+        for e in sorted(evs, key=lambda e: (e["start"], e["title"])):
+            key = (e.get("title"), e["start"].isoformat() if hasattr(e["start"], "isoformat") else e["start"], bool(e.get("all_day")))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(e)
+        self._google_err = err
+        return out, err
+
     def calendar_lines(self, start, end, today):
-        evs = self.env.calendar.events(start, end)
+        evs, _err = self.events_between(start, end)
         out = []
         for e in evs:
             when = "all day" if e["all_day"] else "at " + clock(e["start"])
@@ -171,13 +207,13 @@ class Info:
                                                                                     (", and a %d percent chance of rain" % w["rain"]) if (w.get("rain") or 0) >= 20 else "")
         parts.append(sec["weather"])
         # calendar
-        if not env.calendar.sources():
+        if not self.calendar_ready():
             sec["calendar"] = "No calendar is connected yet. Add an .ics file or link in Settings."
         else:
             start = datetime.combine(today, datetime.min.time()).replace(tzinfo=now.tzinfo)
             rows = [(e, t) for e, t in self.calendar_lines(start, start + timedelta(days=1), today) if e["all_day"] or e["end"] > now]
             if not rows:
-                sec["calendar"] = "Nothing else on your calendar today."
+                sec["calendar"] = self._google_err or "Nothing else on your calendar today."
             else:
                 sec["calendar"] = "You have %d thing%s on your calendar today: %s." % (len(rows), "" if len(rows) == 1 else "s", "; ".join(t for _e, t in rows[:6]) + ("; and more" if len(rows) > 6 else ""))
         parts.append(sec["calendar"])
@@ -234,7 +270,10 @@ class Info:
             or re.fullmatch(r"(?:score|results?) (?:for|of) (?:the |my )?(.+)", t)
         if m and m.group(1).strip() not in NOT_TEAMS and not re.search(r"\b(?:day|week|night|morning|weekend|you|your)$", m.group(1).strip()):
             return {"op": "scores", "team": m.group(1).strip()}
-        # "reconnect my Google calendar": ATLAS reads the calendar itself from the link in Settings - answer here, never via Hermes' connectors
+        # "connect google": one-time browser sign-in that reuses Hermes' Google app. "reconnect my google calendar" stays on the broader rule below.
+        if re.search(r"\bconnect google\b", t):
+            return {"op": "google_connect"}
+        # "reconnect my Google calendar": answer here, never via Hermes' connectors
         if re.search(r"\b(?:re-?connect|connect|link|sync|hook up|set up|authori[sz]e|sign in to|log in to)\b.*\b(?:google |outlook |icloud |my |the )?calendar\b|\bcalendar\b.*\b(?:not connected|isn't connected|disconnected|reconnect)\b", t):
             return {"op": "calendar_connect"}
         # everyday calendar questions: "check last week's calendar", "what meetings did I have yesterday", "am I free on Friday"
@@ -253,18 +292,24 @@ class Info:
         if op == "brief":
             b = await loop.run_in_executor(None, self.brief)
             return {"reply": b["text"], "changed": [], "ui": None, "pending": False, "brief": b}
+        if op == "google_connect":
+            return await self._connect_google()
         if op == "calendar_connect":
-            ps = self.env.calendar.public_sources()
-            if ps:
-                return self._r("Your calendar is already connected to me: %s. I read it straight from the calendar link in Settings, so there's nothing to reconnect and no Google sign-in is needed. "
-                               "Ask me what's on today, tomorrow or last week. To change the link, open Settings, then Calendar." % ", ".join(p["name"] for p in ps))
+            if self.calendar_ready():
+                return self._already_connected()
+            g = self._google()
+            if g is not None and g.needs_connect():
+                return await self._connect_google()
             return self._r("I read your calendar from its secret calendar link, no sign-in needed. Open Settings, then Calendar, and paste the link from Google Calendar "
                            "(Settings and sharing, Secret address in iCal format) or an .ics file.")
         if op in ("calendar", "next"):
             return await loop.run_in_executor(None, self._calendar_reply, it)
         if op == "calendars":
-            ps = self.env.calendar.public_sources()
-            return self._r("You have %d calendar%s: %s." % (len(ps), "" if len(ps) == 1 else "s", ", ".join(p["name"] for p in ps)) if ps else "No calendar is connected yet. Open Settings and add an .ics file or a calendar link.")
+            names = [p["name"] for p in self.env.calendar.public_sources()]
+            g = self._google()
+            if g is not None and g.connected():
+                names.append("Google")
+            return self._r("You have %d calendar%s: %s." % (len(names), "" if len(names) == 1 else "s", ", ".join(names)) if names else "No calendar is connected yet. Open Settings and add an .ics file or a calendar link.")
         if op == "calendar_remove":
             ok = self.env.calendar.remove(it["name"])
             return {"reply": ("Okay, I disconnected the %s calendar." % it["name"]) if ok else "I don't have a calendar called %s." % it["name"], "changed": ["calendar.sources"] if ok else [], "ui": None, "pending": False}
@@ -275,27 +320,60 @@ class Info:
     def _r(self, reply):
         return {"reply": reply, "changed": [], "ui": None, "pending": False}
 
+    def _not_connected_reply(self):
+        g = self._google()
+        st = g.status() if g is not None else {}
+        if st.get("email") and st.get("needs_connect"):
+            return self._r("You haven't connected a calendar yet. I can already read your email with the Google sign-in on this computer, but that sign-in doesn't include your calendar. "
+                           "Say connect Google and I'll open a one-time page in your browser. Or open Settings, then Calendar, and add an .ics file or a secret link.")
+        if st.get("needs_connect"):
+            return self._r("You haven't connected a calendar yet. Say connect Google and I'll open a one-time page in your browser. Or open Settings, then Calendar, and add an .ics file or a secret link.")
+        return self._r("You haven't connected a calendar yet. Open Settings, then Calendar, and add an .ics file or your calendar's secret link - no sign-in needed.")
+
+    def _already_connected(self):
+        names = [p["name"] for p in self.env.calendar.public_sources()]
+        g = self._google()
+        google_on = g is not None and g.connected()
+        if google_on:
+            names.append("Google")
+        if google_on and not self.env.calendar.sources():
+            return self._r("Your calendar is already connected to me: Google. I read it with the same Google sign-in as your email, saved only on this computer. "
+                           "Ask me what's on today, tomorrow or next. To add another calendar, open Settings, then Calendar.")
+        return self._r("Your calendar is already connected to me: %s. I read it straight from the calendar link in Settings, so there's nothing to reconnect and no Google sign-in is needed. "
+                       "Ask me what's on today, tomorrow or last week. To change the link, open Settings, then Calendar." % ", ".join(names))
+
+    async def _connect_google(self):
+        g = self._google()
+        if g is not None and g.connected():
+            return self._r("Google Calendar is already connected. I read it with the same Google sign-in as your email, saved only on this computer. Ask what's on today or tomorrow.")
+        if g is None or not g.needs_connect():
+            return self._r("I read your calendar from its secret calendar link, no sign-in needed. Open Settings, then Calendar, and paste the link from Google Calendar "
+                           "(Settings and sharing, Secret address in iCal format) or an .ics file.")
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, g.connect)
+        return self._r((result or {}).get("message") or "I couldn't finish connecting Google.")
+
     def _calendar_reply(self, it):
-        cal = self.env.calendar
-        if not cal.sources():
-            return self._r("You haven't connected a calendar yet. Open Settings, then Calendar, and add an .ics file or your calendar's secret link - no sign-in needed.")
+        if not self.calendar_ready():
+            return self._not_connected_reply()
         now = self.now()
         today = now.date()
         mid = lambda d: datetime.combine(d, datetime.min.time()).replace(tzinfo=now.tzinfo)
         if it["op"] == "next":
-            evs = [e for e in cal.events(now, now + timedelta(days=30)) if not e["all_day"] and e["start"] >= now - timedelta(minutes=1)]
+            evs, err = self.events_between(now, now + timedelta(days=30))
+            evs = [e for e in evs if not e["all_day"] and e["start"] >= now - timedelta(minutes=1)]
             if not evs:
-                return self._r("Nothing coming up in the next 30 days.")
+                return self._r(err or "Nothing coming up in the next 30 days.")
             e = evs[0]
             return self._r("Your next event is %s %s at %s%s." % (e["title"], day_label(e["start"].date(), today), clock(e["start"]), (" in " + e["location"]) if e["location"] else ""))
         if it.get("range"):
             first, last, label, past = it["range"]
             days = [first + timedelta(days=i) for i in range((last - first).days + 1)]
-            evs = cal.events(mid(first), mid(last) + timedelta(days=1))
+            evs, err = self.events_between(mid(first), mid(last) + timedelta(days=1))
             if label == "tonight":
                 evs = [e for e in evs if not e["all_day"] and e["start"].hour >= 17]
             if not evs:
-                return self._r(("There was nothing on your calendar %s." if past else "Nothing %s on your calendar.") % label)
+                return self._r(err or (("There was nothing on your calendar %s." if past else "Nothing %s on your calendar.") % label))
             multi = len(days) > 1
             lines = ["%s%s%s" % ((e["start"].strftime("%A %b ") + str(e["start"].day) + ": ") if multi else "", e["title"], (", all day" if e["all_day"] else " at " + clock(e["start"]))) for e in evs[:10]]
             return self._r("%s you %s %d event%s. %s%s." % (label[0].upper() + label[1:] + ",", "had" if past else "have", len(evs), "" if len(evs) == 1 else "s", "; ".join(lines),
@@ -320,13 +398,13 @@ class Info:
                 return self._r("Which day? Say today, tomorrow, or a weekday.")
             d = today + timedelta(days=(WEEKDAYS.index(wd) - today.weekday()) % 7)
             days, label = [d], "on " + wd.capitalize()
-        evs = cal.events(mid(days[0]), mid(days[-1]) + timedelta(days=1))
+        evs, err = self.events_between(mid(days[0]), mid(days[-1]) + timedelta(days=1))
         if when in ("today",):
             evs = [e for e in evs if e["all_day"] or e["end"] > now]
         if when == "tonight":
             evs = [e for e in evs if not e["all_day"] and e["start"].hour >= 17]
         if not evs:
-            return self._r("Nothing %s on your calendar." % label)
+            return self._r(err or ("Nothing %s on your calendar." % label))
         multi = len(days) > 1
         lines = []
         for e in evs[:8]:
@@ -337,8 +415,12 @@ class Info:
         """Calendar facts to hand to Hermes with a calendar-related request ATLAS doesn't answer itself."""
         rule = ("Use ONLY these calendar events from ATLAS. Do not use Google, Microsoft or any other connectors or skills for the calendar, do not ask the user to sign in "
                 "or reconnect, and never search the user's files for credentials or tokens. If something isn't in this list, say it isn't on the calendar ATLAS reads.")
-        cal = self.env.calendar
-        if not cal.sources():
+        if not self.calendar_ready():
+            g = self._google()
+            st = g.status() if g is not None else {}
+            if st.get("needs_connect"):
+                return ("[ATLAS calendar] No calendar is connected to ATLAS yet. Email works through the Google sign-in already on this computer, but that sign-in does not include the calendar. "
+                        "Tell the user to say connect Google. Do not start a Google sign-in, do not use connectors, and never search the user's files for credentials or tokens.")
             return ("[ATLAS calendar] No calendar is connected to ATLAS. Tell the user to open ATLAS Settings, then Calendar, and paste their calendar's secret iCal link "
                     "(Google Calendar: Settings and sharing, Secret address in iCal format). Do not try to connect or search for a calendar yourself.")
         now = self.now()
@@ -347,10 +429,12 @@ class Info:
         first, last = (rng[0], rng[1]) if rng else (today - timedelta(days=7), today + timedelta(days=14))
         first, last = min(first, today - timedelta(days=1)), max(last, today + timedelta(days=1))
         mid = lambda d: datetime.combine(d, datetime.min.time()).replace(tzinfo=now.tzinfo)   # noqa: E731
-        evs = cal.events(mid(first), mid(last) + timedelta(days=1))
+        evs, gerr = self.events_between(mid(first), mid(last) + timedelta(days=1))
         lines = ["- %s %s: %s%s" % (e["start"].strftime("%a %Y-%m-%d"), "all day" if e["all_day"] else clock(e["start"]) + "-" + clock(e["end"]), e["title"],
                                    (" (" + e["location"] + ")") if e["location"] else "") for e in evs[:60]]
-        errs = [p["name"] + ": " + p["error"] for p in cal.public_sources() if p.get("error")]
+        errs = [p["name"] + ": " + p["error"] for p in self.env.calendar.public_sources() if p.get("error")]
+        if gerr:
+            errs.append(gerr)
         return ("[ATLAS calendar] Now: %s. Events from %s to %s (%d):\n%s%s\n%s" % (now.strftime("%A %Y-%m-%d %H:%M"), first.isoformat(), last.isoformat(), len(evs),
                 "\n".join(lines) if lines else "- (no events in this period)", ("\nCalendar problems: " + "; ".join(errs)) if errs else "", rule))
 
