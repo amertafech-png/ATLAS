@@ -117,9 +117,10 @@ def system_prompt():
         "Be warm, sharp and concise: normally one to three short spoken sentences. Plain text only - no markdown, "
         "no bullet lists, no emojis - unless the user explicitly asks for detail. Messages may come from voice "
         "transcription, so be forgiving of small mis-hearings. If a webcam image is attached, it is a live frame from their desk. "
-        "Calendar: ATLAS reads the user's calendar itself and adds the relevant events to the message as [ATLAS calendar]; answer from those events only. "
-        "Never use your own Google/Microsoft calendar connectors or skills for it, never ask the user to sign in or paste OAuth links for the calendar, "
-        "and never search the user's files or folders for credentials, tokens or client secrets."
+        "Calendar: ATLAS reads the user's calendar itself (their Google Calendar, when that sign-in is already on this computer, or a calendar link they added) "
+        "and adds the relevant events to the message as [ATLAS calendar]; answer from those events only. "
+        "Never use your own Google/Microsoft calendar connectors or skills for it, never start a Google sign-in or paste OAuth links for the calendar, "
+        "and never search the user's files or folders for credentials, tokens or client secrets. If no calendar is connected, tell them to say connect Google or add a link in Settings."
     )
 
 
@@ -178,6 +179,7 @@ CFG = load_config()
 import atlas_cfgio  # noqa: E402  (atomic, merge-safe config.json writes)
 import atlas_browser  # noqa: E402  (links open in the user's default browser)
 import atlas_calendar  # noqa: E402  (calendar panel: local .ics files and secret links)
+import atlas_google  # noqa: E402  (Google Calendar via the Hermes email sign-in, or one Connect Google)
 import atlas_features  # noqa: E402  (feature framework, see atlas_features.py)
 import atlas_hermes  # noqa: E402  (finds / installs / connects Hermes, see atlas_hermes.py)
 import atlas_meta  # noqa: E402
@@ -1513,6 +1515,7 @@ class SettingsEnv:
 
 SETTINGS = atlas_settings.Settings(SettingsEnv())
 CALENDAR = atlas_calendar.Calendar(CFG, save_user_config, lambda: (CFG.get("profile") or {}).get("timezone") or "")
+GOOGLE = atlas_google.GoogleCalendar(DATA_DIR, open_url=atlas_browser.open_default)
 SCORES = atlas_scores.Scores()
 
 
@@ -1520,6 +1523,7 @@ class InfoEnv:
     """What atlas_info.py (calendar / scores / brief) may touch."""
     cfg = CFG
     calendar = CALENDAR
+    google = GOOGLE
     scores = SCORES
     weather = None            # None = the real Open-Meteo lookup
 
@@ -1575,6 +1579,16 @@ def _iso(d):
     return d.isoformat(timespec="minutes") if hasattr(d, "isoformat") else d
 
 
+def _calendar_payload(evs, err=""):
+    """Sources plus a Google row. Never includes a token, a link, or a client secret."""
+    sources = CALENDAR.public_sources()
+    gst = GOOGLE.status()
+    if gst.get("connected"):
+        sources = [{"id": "google", "name": "Google", "kind": "google", "hint": gst.get("hint") or "Google Calendar",
+                    "ok": not err, "error": err or "", "count": sum(1 for e in evs if e.get("origin") == "google")}] + sources
+    return sources, gst
+
+
 async def h_calendar(request):
     loop = asyncio.get_running_loop()
     try:
@@ -1584,15 +1598,29 @@ async def h_calendar(request):
     def work():
         now = INFO.now()
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        evs = CALENDAR.events(start, start + timedelta(days=days), force=request.query.get("refresh") == "1")
-        return [{"title": e["title"], "start": _iso(e["start"]), "end": _iso(e["end"]), "all_day": e["all_day"], "location": e["location"], "source": e["source"]} for e in evs if e["all_day"] or e["end"] > now or e["start"].date() != now.date()], now
-    evs, now = await loop.run_in_executor(None, work)
-    return web.json_response({"ok": True, "events": evs, "now": _iso(now), "sources": CALENDAR.public_sources(), "configured": bool(CALENDAR.sources())})
+        evs, err = INFO.events_between(start, start + timedelta(days=days), force=request.query.get("refresh") == "1")
+        shown = [e for e in evs if e["all_day"] or e["end"] > now or e["start"].date() != now.date()]
+        return shown, now, err
+    evs, now, err = await loop.run_in_executor(None, work)
+    sources, gst = _calendar_payload(evs, err)
+    public = [{"title": e["title"], "start": _iso(e["start"]), "end": _iso(e["end"]), "all_day": e["all_day"], "location": e["location"], "source": e["source"]} for e in evs]
+    return web.json_response({"ok": True, "events": public, "now": _iso(now), "sources": sources, "configured": INFO.calendar_ready(), "google": gst})
+
+
+async def h_google_connect(request):
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, GOOGLE.connect)
+    msg = (result or {}).get("message") or "I couldn't finish connecting Google."
+    body = {"ok": bool((result or {}).get("connected")), "message": msg, "google": GOOGLE.status()}
+    if not body["ok"]:
+        body["error"] = msg
+        return web.json_response(body, status=400)
+    return web.json_response(body)
 
 
 async def h_calendar_sources(request):
     if request.method == "GET":
-        return web.json_response({"ok": True, "sources": CALENDAR.public_sources()})
+        return web.json_response({"ok": True, "sources": CALENDAR.public_sources(), "google": GOOGLE.status()})
     try:
         body = await request.json()
     except Exception:
@@ -1748,7 +1776,8 @@ def make_app():
         # feature framework
         web.get("/api/features", h_features), web.post("/api/features/{fid}", h_feature_set),
         web.get("/api/profile", h_profile_get), web.post("/api/profile", h_profile_set),
-        web.get("/api/calendar", h_calendar), web.get("/api/calendar/sources", h_calendar_sources), web.post("/api/calendar/sources", h_calendar_sources), web.post("/api/calendar/sources/remove", h_calendar_sources),
+        web.get("/api/calendar", h_calendar), web.post("/api/calendar/google/connect", h_google_connect),
+        web.get("/api/calendar/sources", h_calendar_sources), web.post("/api/calendar/sources", h_calendar_sources), web.post("/api/calendar/sources/remove", h_calendar_sources),
         web.get("/api/reminders", h_reminders), web.post("/api/reminders/quick", h_reminder_quick), web.post("/api/reminders/{rid:[a-f0-9]+}/{act:cancel|dismiss}", h_reminder_act),
         web.get("/api/scores", h_scores), web.get("/api/brief", h_brief), web.post("/api/brief/morning", h_brief_morning),
         web.get("/api/modules", h_modules), web.post("/api/modules/ack", h_modules_ack),
