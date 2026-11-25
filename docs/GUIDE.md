@@ -44,7 +44,7 @@ tool-call text, and then shows a friendly message instead of the garbage. **Sett
 | App files + Python env | `%LOCALAPPDATA%\ATLAS\app` | `~/Library/Application Support/ATLAS/app` |
 | Your data (config.json, state, models, logs, window profile) | `%LOCALAPPDATA%\ATLAS` | `~/Library/Application Support/ATLAS` |
 | Launcher | Desktop + Start Menu **ATLAS** shortcut (own icon; runs PowerShell directly - no Windows Script Host), *Stop ATLAS* in Start Menu | `~/Applications/ATLAS.app` (own icon) |
-| Window | Edge `--app` (falls back to Chrome, then default browser) | Chrome / Edge / Brave / Chromium `--app` (falls back to default browser) |
+| Window | Chrome, Edge or Brave `--app` window, **full screen (`--kiosk`) by default** (no title bar, taskbar hidden). Falls back to your default browser if none of those is installed. | Chrome, then Edge / Brave / Chromium, **full screen (`--kiosk`) by default** (menu bar and Dock hidden). Safari gets a normal tab. |
 | Optional login item | Startup-folder shortcut (bridge only) | LaunchAgent `com.atlas.bridge` (bridge only) |
 | Hermes data (API key in `.env`, sign-ins in `auth.json`) | `%LOCALAPPDATA%\hermes` | `~/.hermes` |
 
@@ -60,7 +60,8 @@ browser's icon (Chromium app mode limitation); Safari-only Macs get a normal bro
 | **Hear the answer** | Spoken with Piper (British "alan" by default; macOS falls back to `say` if Piper can't install). Speaker button toggles. |
 | **Type** | Bottom bar -> Enter. The **Chat** module shows the whole conversation (voice + typed share one Hermes session). |
 | **Show it something** | Camera button -> preview -> optional question -> **Look**. |
-| **Settings** | Dock -> **Settings**: switch optional features on/off (see below). |
+| **Settings** | Dock -> **Settings**, or **Ctrl+,** (Cmd+, on a Mac). Works while full screen. |
+| **Full screen** | On by default: the window covers the monitor. **F11** leaves it (Mac: **Ctrl+Cmd+F**). **Esc** leaves it when you are not talking and no menu is open (otherwise Esc cancels listening or closes Settings / Reset). Say **full screen** or **exit full screen**, or use **Settings -> General -> Full screen**. The choice is remembered. Links still open in your default browser, not in this window. |
 
 ## Conversation mode
 After ATLAS **finishes speaking** an answer to something you said (push-to-talk or the wake word), it listens again - by default for **6 seconds** (3-15 s, **Settings -> Features -> Listening window**; the switch is on by default). A **countdown ring** around the orb and a **soft tone** mark the window; it shows "hearing you" as soon as you start talking, and your reply is handled like any question (and opens another window after its answer).
@@ -75,7 +76,7 @@ Everything in **Settings** can also be changed by saying or typing it. The bridg
 * **Conversation:** "turn off conversation mode", "set the listening window to 10 seconds".
 * **You:** "change your name to Nova", "call me Adam", "set my city to Dallas".
 * **Sports:** "follow soccer", "follow Juventus in soccer", "add Serie A to my soccer leagues", "stop following Juventus", "remove soccer", "remove all my sports", "what sports do I follow".
-* **AI:** "switch to Claude" (opens the sign-in for it), **Panels:** "hide the weather panel", "show the sports panel". **System:** "turn on start at login", "turn off automatic updates", "check for updates", "install the update", "reset my settings", "uninstall ATLAS".
+* **AI:** "switch to Claude" (opens the sign-in for it), **Panels:** "hide the weather panel", "show the sports panel". **System:** "full screen", "exit full screen", "turn on start at login", "turn off automatic updates", "check for updates", "install the update", "reset my settings", "uninstall ATLAS".
 * **Ask:** "what are my settings", "what is my city set to", "is conversation mode on", "what can I change".
 
 **Risky changes ask first** and wait for "yes" (typed or spoken; "no" or anything else cancels; the question expires after 2 minutes): turning the **wake word** (microphone) or an **add-on** (computer control, hand gestures, Telegram) ON, **switching the AI provider**, **removing a whole sport**, **installing an update**, **reset**, **uninstall**. Turning the wake word OFF is immediate, and ATLAS tells you it can no longer hear "Hey ATLAS" - turn it back on with push-to-talk, chat, or Settings -> Features. "Uninstall" only explains how; it never deletes anything itself.

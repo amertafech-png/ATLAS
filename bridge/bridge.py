@@ -178,6 +178,7 @@ CFG = load_config()
 
 import atlas_cfgio  # noqa: E402  (atomic, merge-safe config.json writes)
 import atlas_browser  # noqa: E402  (links open in the user's default browser)
+import atlas_window  # noqa: E402  (full-screen / kiosk window: relaunch when Chromium cannot leave --kiosk)
 import atlas_calendar  # noqa: E402  (calendar panel: local .ics files and secret links)
 import atlas_google  # noqa: E402  (Google Calendar via the Hermes email sign-in, or one Connect Google)
 import atlas_features  # noqa: E402  (feature framework, see atlas_features.py)
@@ -1710,6 +1711,26 @@ async def h_setting_run(request):
     return web.json_response({"ok": True, "message": (res or {}).get("reply", ""), "changed": (res or {}).get("changed", []), "settings": SETTINGS.describe(), "prefs": SETTINGS.prefs_view()})
 
 
+async def h_window_fullscreen(request):
+    """Save full screen, then say whether the page should enter/exit the Fullscreen API or relaunch the window.
+    Body: {on, kiosk, api, api_failed}. kiosk = this window was launched with ?kiosk=1."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    on = bool(body.get("on"))
+    s = SETTINGS.by_id("window.fullscreen")
+    res = await SETTINGS._apply(s, on) if s else {"reply": ""}
+    action = atlas_window.plan(on, bool(body.get("kiosk")), bool(body.get("api")), bool(body.get("api_failed")))
+    note = ""
+    if action == "relaunch":
+        ok, note = atlas_window.relaunch(HERE)
+        if not ok:
+            action = "none"
+    return web.json_response({"ok": True, "action": action, "fullscreen": on, "note": note, "message": (res or {}).get("reply", ""),
+                              "settings": SETTINGS.describe(), "prefs": SETTINGS.prefs_view()})
+
+
 async def h_update(request):
     return web.json_response({"ok": True, **UPDATER.state()})
 
@@ -1784,6 +1805,7 @@ def make_app():
         web.get("/api/modules/{fid:[a-z0-9_]+}/review", h_module_review), web.post("/api/modules/{fid:[a-z0-9_]+}/opinion", h_module_review),
         web.post("/api/modules/{fid:[a-z0-9_]+}/{act:approve|reject}", h_module_decide),
         web.get("/api/settings", h_settings), web.post("/api/settings/{sid}", h_setting_set), web.post("/api/settings/{sid}/run", h_setting_run),
+        web.post("/api/window/fullscreen", h_window_fullscreen),
         web.get("/api/update", h_update), web.post("/api/update/check", h_update_check),
         web.post("/api/update/install", h_update_install), web.post("/api/update/settings", h_update_settings),
         web.get("/api/setup/status", h_setup_status), web.post("/api/setup/install", h_setup_install),

@@ -19,7 +19,7 @@ try:
         ps = r'''
 $ErrorActionPreference = 'Stop'
 $ast = [System.Management.Automation.Language.Parser]::ParseFile('%s', [ref]$null, [ref]$null)
-$want = @('Get-DefaultBrowserKind','Find-BrowserExe','Find-Browser','Get-AppWindowArgs','Initialize-AppProfile')
+$want = @('Get-DefaultBrowserKind','Find-BrowserExe','Find-Browser','Get-AppWindowArgs','Initialize-AppProfile','Get-FullscreenPref')
 foreach ($f in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
     if ($want -contains $f.Name) { . ([scriptblock]::Create($f.Extent.Text)) }
 }
@@ -34,6 +34,20 @@ foreach ($case in @(@('', 'chrome,msedge'), @('msedge', 'chrome,msedge'), @('', 
 }
 $out['edge'] = (Get-AppWindowArgs 'msedge' 'http://127.0.0.1:8765' 'C:\p' '1600,900')
 $out['chrome'] = (Get-AppWindowArgs 'chrome' 'http://127.0.0.1:8765' 'C:\p' '1600,900')
+$out['kiosk_off'] = (Get-AppWindowArgs 'chrome' 'http://127.0.0.1:8765' 'C:\p' '1600,900' $false)
+$out['kiosk_on'] = (Get-AppWindowArgs 'chrome' 'http://127.0.0.1:8765' 'C:\p' '1600,900' $true)
+$out['kiosk_edge'] = (Get-AppWindowArgs 'msedge' 'http://127.0.0.1:8765' 'C:\p' '1600,900' $true)
+if (Get-Command Get-FullscreenPref -ErrorAction SilentlyContinue) {
+    Remove-Item Env:ATLAS_FULLSCREEN -ErrorAction SilentlyContinue
+    $Data = '%s'; $Root = '%s'
+    $out['fs_default'] = [bool](Get-FullscreenPref)
+    $env:ATLAS_FULLSCREEN = '0'; $out['fs_env0'] = [bool](Get-FullscreenPref)
+    Remove-Item Env:ATLAS_FULLSCREEN
+    Set-Content -LiteralPath (Join-Path $Data 'config.json') '{"prefs":{"fullscreen":false}}'
+    $out['fs_file_off'] = [bool](Get-FullscreenPref)
+    $env:ATLAS_FULLSCREEN = '1'; $out['fs_env1'] = [bool](Get-FullscreenPref)
+    Remove-Item Env:ATLAS_FULLSCREEN
+}
 if (Get-Command Initialize-AppProfile -ErrorAction SilentlyContinue) {
     $old = Join-Path '%s' 'appdata'; $new = Join-Path '%s' 'browser-profile'
     New-Item -ItemType Directory -Force -Path (Join-Path $old 'Default\Local Storage\leveldb') | Out-Null
@@ -46,7 +60,7 @@ if (Get-Command Initialize-AppProfile -ErrorAction SilentlyContinue) {
     $out['second'] = Get-Content -Raw (Join-Path $new 'Default\Preferences')
 }
 $out | ConvertTo-Json -Depth 4
-''' % (str(ROOT / script), str(tmp).replace("\\", "/"), str(tmp).replace("\\", "/"))
+''' % (str(ROOT / script), str(tmp).replace("\\", "/"), str(tmp).replace("\\", "/"), str(tmp).replace("\\", "/"), str(tmp).replace("\\", "/"))
         r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True, text=True, timeout=120)
         tag = Path(script).name
         try: o = json.loads(r.stdout)
@@ -63,6 +77,16 @@ $out | ConvertTo-Json -Depth 4
         df = [x for x in e if x.startswith("--disable-features=")]
         check(tag + ": Edge: one --disable-features with msImplicitSignin", len(df) == 1 and "msImplicitSignin" in df[0] and "msEdgeImplicitSignin" in df[0], df)
         check(tag + ": Chrome gets no Edge-only features", not any("msImplicit" in x for x in c), c)
+        check(tag + ": a normal app window is not --kiosk", "--kiosk" not in e and "--kiosk" not in c and "--kiosk" not in o["kiosk_off"])
+        kon, ke = o["kiosk_on"], o["kiosk_edge"]
+        check(tag + ": full screen adds --kiosk and keeps --app (links are not opened here)", "--kiosk" in kon and any(x.startswith("--app=http://127.0.0.1:8765") for x in kon), kon)
+        kdf = [x for x in ke if x.startswith("--disable-features=")]
+        check(tag + ": kiosk Edge still has one --disable-features", "--kiosk" in ke and len(kdf) == 1 and "msImplicitSignin" in kdf[0], ke)
+        if "fs_default" in o:
+            check(tag + ": full screen defaults on", o["fs_default"] is True, o.get("fs_default"))
+            check(tag + ": ATLAS_FULLSCREEN=0 turns it off", o["fs_env0"] is False, o.get("fs_env0"))
+            check(tag + ": config prefs.fullscreen false is remembered", o["fs_file_off"] is False, o.get("fs_file_off"))
+            check(tag + ": ATLAS_FULLSCREEN=1 overrides the file", o["fs_env1"] is True, o.get("fs_env1"))
         if "prefs" in o:
             p = json.loads(o["prefs"])
             check(tag + ": new profile starts with browser sign-in off and no sync", p["signin"]["allowed"] is False and p["sync"]["requested"] is False, p)

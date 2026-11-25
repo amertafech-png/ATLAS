@@ -62,11 +62,12 @@ ATLAS uses the Edge/Chrome already on your computer for its window (nothing is i
 
 ## What it does
 * **Talk to it:** push-to-talk (Space), local speech recognition (faster-whisper) and a local voice (Piper; macOS `say` as a fallback).
+* **Full screen:** opens covering the whole monitor (no title bar; on Windows the taskbar hides). Press **F11** or **Esc** to leave it (on a Mac, **Ctrl+Cmd+F** or **Esc**), say "exit full screen", or turn it off in Settings. It remembers. Links still open in your default browser.
 * **Show it things:** the camera panel sends one frame to Hermes only when you press **Look**.
 * **Live system tiles**, a chat history shared with your voice conversations, a focus timer and notes.
 * **Conversation mode:** after ATLAS speaks an answer (push-to-talk or wake word) it listens again for a few seconds (6 s by default, 3-15 s in Settings) so you can just reply. A countdown ring and a soft tone show the window is open; say "that's all", "stop" or "thanks", press Esc or the mic button, or stay quiet to end it. It starts only after the audio has finished, so it never hears itself.
   ![Conversation mode](docs/conversation-ring.png)
-* **Change any setting by voice or chat:** "turn off wake word", "mute", "turn off conversation mode", "change your name to Nova", "set my city to Dallas", "remove soccer", "stop following Juventus", "hide the weather panel", "what are my settings". Risky changes (microphone on, add-ons, switching the AI, reset) ask first. See [GUIDE](docs/GUIDE.md#settings-by-voice-or-chat).
+* **Change any setting by voice or chat:** "turn off wake word", "mute", "turn off conversation mode", "full screen", "exit full screen", "change your name to Nova", "set my city to Dallas", "remove soccer", "stop following Juventus", "hide the weather panel", "what are my settings". Risky changes (microphone on, add-ons, switching the AI, reset) ask first. See [GUIDE](docs/GUIDE.md#settings-by-voice-or-chat).
 * **Updates itself** (with your click): an *Update* button appears when a new release is published; downloads are checked against a SHA-256 before running.
 * **Wake word (optional, off by default):** turn it on in Settings -> Features and just say **"Hey ATLAS"** (or "Hey <the name you gave it>") - fully offline, no account or key. See [GUIDE](docs/GUIDE.md#wake-word).
 * **Swappable panels:** choose what each of the six panel slots shows (Settings -> Panel layout, or "replace the scanner with my calendar"). ![Slot picker](docs/settings-slot-picker.png)

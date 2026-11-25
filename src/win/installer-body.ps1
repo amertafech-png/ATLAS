@@ -294,9 +294,13 @@ function Find-Browser {
 # A private profile (never the user's own), no first-run / default-browser / sign-in prompts, no sync, nothing left running in the
 # background. Edge only: switch off its implicit Microsoft-account sign-in (the sync popup) - --disable-sync alone does not.
 # Chromium only honours ONE --disable-features switch, so all features go in one.
-function Get-AppWindowArgs([string]$kind, [string]$url, [string]$profileDir, [string]$size) {
+function Get-AppWindowArgs([string]$kind, [string]$url, [string]$profileDir, [string]$size, [bool]$fullscreen = $false) {
     $a = @("--app=$url", "--user-data-dir=`"$profileDir`"", "--window-size=$size", '--no-first-run', '--no-default-browser-check',
-           '--disable-sync', '--disable-signin-promo', '--disable-background-mode', '--no-service-autorun', '--autoplay-policy=no-user-gesture-required')
+           '--disable-sync', '--disable-signin-promo', '--disable-background-mode', '--no-service-autorun', '--autoplay-policy=no-user-gesture-required',
+           '--disable-session-crashed-bubble', '--hide-crash-restore-bubble')
+    # --kiosk is real full screen (no title bar; Windows hides the taskbar). The installer leaves $fullscreen false.
+    # Links are not opened in this window. One --disable-features only, and only for Edge, after this.
+    if ($fullscreen) { $a += '--kiosk' }
     if ($kind -eq 'msedge') { $a += '--disable-features=msImplicitSignin,msEdgeImplicitSignin,msIdentityImplicitSignin,msEdgeSyncConsent' }
     return $a
 }

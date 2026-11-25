@@ -1,3 +1,11 @@
+## ATLAS 1.4.5
+
+**ATLAS opens full screen, like a kiosk, and you can leave it whenever you want.**
+
+- **Full screen by default.** The window covers the whole monitor: no title bar, and on Windows the taskbar is hidden. It still uses ATLAS's own private browser profile and prefers Chrome (then Edge, then Brave).
+- **Easy to leave, and it remembers.** Press **F11** or **Esc** (on a Mac, **Ctrl+Cmd+F** or **Esc**), say **full screen** or **exit full screen**, or use the **Full screen** switch in **Settings**. **Settings** (Ctrl+,) and **Reset** stay on the screen.
+- **Links still open in your usual browser.** Sign-in pages and other links are handed to the browser you chose as the default. They do not open inside the full-screen window.
+
 ## ATLAS 1.4.4
 
 **The Sports panel keeps itself up to date, and calendar questions use the same Google sign-in as your email.**

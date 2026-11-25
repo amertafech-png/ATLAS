@@ -3,7 +3,10 @@
                     then open the app window - or bring it to the front if it is already open
       -Mode Bridge  start only the bridge
       -Mode Stop    stop the bridge
-    The app window is Microsoft Edge (or Chrome) in "app mode": no tabs, no address bar.  #>
+    The app window is Chrome, Edge or Brave in "app mode": no tabs, no address bar.
+    When full screen is on (the default) it is also --kiosk: no title bar, taskbar hidden.
+    F11, Esc, Settings and "exit full screen" start this script again to leave kiosk.
+    Web links are not opened here; the HUD hands them to the default browser.  #>
 param([ValidateSet('Launch','Bridge','Stop')][string]$Mode = 'Launch')
 $ErrorActionPreference = 'Stop'
 
@@ -66,6 +69,39 @@ function Start-AtlasBridge {
     if (Test-Path $err) { $tail = (Get-Content $err -Tail 8) -join "`n" }
     Show-Msg "ATLAS's bridge did not start.`n`n$tail`n`nLogs: $Logs"
     return $false
+}
+function Get-FullscreenPref {
+    # default ON. ATLAS_FULLSCREEN=0 or 1 wins. Otherwise the first config that actually sets prefs.fullscreen.
+    if ($env:ATLAS_FULLSCREEN -eq '0') { return $false }
+    if ($env:ATLAS_FULLSCREEN -eq '1') { return $true }
+    foreach ($c in @((Join-Path $Data 'config.json'), (Join-Path $Root 'bridge\config.json'))) {
+        if (-not (Test-Path -LiteralPath $c)) { continue }
+        try {
+            $j = Get-Content -LiteralPath $c -Raw | ConvertFrom-Json
+            if ($j.prefs -and ($j.prefs.PSObject.Properties.Name -contains 'fullscreen')) { return [bool]$j.prefs.fullscreen }
+        } catch { }
+    }
+    return $true
+}
+function Stop-AppWindow([string]$appdata) {
+    # Close only the browser that is showing ATLAS (its private profile + --app=). Never the user's normal Chrome.
+    if (-not $appdata) { return }
+    function Test-AtlasBrowser([string]$cl) { return ($cl -and $cl.Contains($appdata) -and $cl.Contains('--app=')) }
+    try {
+        Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe' OR Name='brave.exe'" -ErrorAction Stop |
+            Where-Object { Test-AtlasBrowser ([string]$_.CommandLine) } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    } catch { }
+    for ($i = 0; $i -lt 40; $i++) {
+        $left = $false
+        try {
+            foreach ($p in (Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe' OR Name='brave.exe'" -ErrorAction Stop)) {
+                if (Test-AtlasBrowser ([string]$p.CommandLine)) { $left = $true; break }
+            }
+        } catch { }
+        if (-not $left) { return }
+        Start-Sleep -Milliseconds 100
+    }
 }
 function Get-AppWindowPid([string]$appdata) {
     # the browser's main process for ATLAS's private profile folder (the one that owns the visible window)
@@ -215,9 +251,13 @@ function Find-Browser {
 # A private profile (never the user's own), no first-run / default-browser / sign-in prompts, no sync, nothing left running in the
 # background. Edge only: switch off its implicit Microsoft-account sign-in (the sync popup) - --disable-sync alone does not.
 # Chromium only honours ONE --disable-features switch, so all features go in one.
-function Get-AppWindowArgs([string]$kind, [string]$url, [string]$profileDir, [string]$size) {
+function Get-AppWindowArgs([string]$kind, [string]$url, [string]$profileDir, [string]$size, [bool]$fullscreen = $false) {
     $a = @("--app=$url", "--user-data-dir=`"$profileDir`"", "--window-size=$size", '--no-first-run', '--no-default-browser-check',
-           '--disable-sync', '--disable-signin-promo', '--disable-background-mode', '--no-service-autorun', '--autoplay-policy=no-user-gesture-required')
+           '--disable-sync', '--disable-signin-promo', '--disable-background-mode', '--no-service-autorun', '--autoplay-policy=no-user-gesture-required',
+           '--disable-session-crashed-bubble', '--hide-crash-restore-bubble')
+    # --kiosk is real full screen (no title bar; Windows hides the taskbar). The installer leaves $fullscreen false.
+    # Links are not opened in this window. One --disable-features only, and only for Edge, after this.
+    if ($fullscreen) { $a += '--kiosk' }
     if ($kind -eq 'msedge') { $a += '--disable-features=msImplicitSignin,msEdgeImplicitSignin,msIdentityImplicitSignin,msEdgeSyncConsent' }
     return $a
 }
@@ -260,17 +300,21 @@ switch ($Mode) {
         $mutex = New-Object System.Threading.Mutex($false, 'Local\ATLAS-Launcher')
         $held = $false
         try { $held = $mutex.WaitOne(150000) } catch [System.Threading.AbandonedMutexException] { $held = $true }
+        $fullscreen = Get-FullscreenPref
+        $openUrl = $Url
+        if ($fullscreen) { $openUrl = "${Url}/?kiosk=1" }   # the page reads this so Esc/F11 know a relaunch is required to leave --kiosk
         try {
             if (-not (Start-AtlasBridge)) { exit 1 }
-            if (Show-ExistingWindow $appdata) { $gp = Get-AppWindowPid $appdata; if ($gp) { [void](Set-AtlasWindowIdentity $gp) }; exit 0 }
+            if ($env:ATLAS_RELAUNCH -eq '1') { Stop-AppWindow $appdata }   # full-screen toggle: close this profile's window, then open the other way
+            elseif (Show-ExistingWindow $appdata) { $gp = Get-AppWindowPid $appdata; if ($gp) { [void](Set-AtlasWindowIdentity $gp) }; exit 0 }
         } finally { if ($held) { try { $mutex.ReleaseMutex() } catch { } } }
         $browser = Find-Browser
         if ($browser) {
             Initialize-AppProfile $appdata $oldProfile
-            Start-Process -FilePath $browser.Path -ArgumentList (Get-AppWindowArgs $browser.Kind $Url $appdata '1600,900')
+            Start-Process -FilePath $browser.Path -ArgumentList (Get-AppWindowArgs $browser.Kind $openUrl $appdata '1600,900' $fullscreen)
             [void](Wait-AtlasWindowIdentity $appdata)
         } else {
-            Start-Process $Url                                       # no Edge/Chrome found: default browser tab
+            Start-Process $Url                                       # no Edge/Chrome found: default browser tab (not kiosk)
         }
     }
 }
