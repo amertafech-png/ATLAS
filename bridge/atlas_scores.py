@@ -1,6 +1,11 @@
-"""Live scores for the teams you follow, from ESPN's public scoreboard JSON (site.api.espn.com - no account, no key).
-It is an unofficial public endpoint: if it is slow, down, or changes shape, ATLAS says scores are unavailable and shows nothing made up.
-Only the host site.api.espn.com is ever contacted, over https, and only to read; nothing about you is sent except the league path."""
+"""Scores for the teams you follow, from ESPN's public scoreboard JSON (site.api.espn.com - no account, no key).
+
+The current scoreboard (no date) is what ESPN keeps fresh during a game. A second, small look at the league calendar
+picks up the previous match day and the next one, so a final or a later fixture still shows after it has left
+"yesterday and today". While a followed team is playing, the answer is reused for only a few seconds; otherwise it
+is reused for several minutes. If ESPN does not answer, the last good scoreboard is kept and marked stale.
+Only the host site.api.espn.com is ever contacted, over https, and only to read; nothing about you is sent except the league path.
+"""
 import json
 import re
 import time
@@ -10,13 +15,18 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 HOST = "https://site.api.espn.com/apis/site/v2/sports/"
-CACHE_SECONDS = 60
+LIVE_REFRESH = 15          # a followed team is in a game: ESPN's own cache is about 10 seconds
+QUIET_REFRESH = 300        # nothing live: finals and upcoming games do not move
+RETRY_REFRESH = 30         # the last fetch failed: try again soon, but keep showing the previous board
 SOCCER = {"premier league": ("eng.1", "Premier League"), "la liga": ("esp.1", "La Liga"), "serie a": ("ita.1", "Serie A"), "bundesliga": ("ger.1", "Bundesliga"),
           "ligue 1": ("fra.1", "Ligue 1"), "mls": ("usa.1", "MLS"), "champions league": ("uefa.champions", "Champions League"), "europa league": ("uefa.europa", "Europa League"),
           "eredivisie": ("ned.1", "Eredivisie"), "primeira liga": ("por.1", "Primeira Liga"), "liga mx": ("mex.1", "Liga MX"), "nwsl": ("usa.nwsl", "NWSL")}
 SOCCER_DEFAULT = ["premier league", "la liga", "serie a", "bundesliga", "ligue 1", "mls", "champions league"]
 PATHS = {"nfl": ("football/nfl", "NFL"), "nba": ("basketball/nba", "NBA"), "mlb": ("baseball/mlb", "MLB"), "nhl": ("hockey/nhl", "NHL"),
          "college football": ("football/college-football", "College football"), "wnba": ("basketball/wnba", "WNBA")}
+_PATH_OK = re.compile(r"^[a-z0-9]+(?:[./-][a-z0-9]+)+$")
+_YMD = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
+_NUM = re.compile(r"^\d{1,4}$")
 
 
 def fold(s):
@@ -44,6 +54,94 @@ def league_paths(sport_entry):
     if sp in ("football",):
         return [(PATHS["nfl"][0], "NFL")]
     return []
+
+
+def board_url(path, query=""):
+    return HOST + path + "/scoreboard" + (("?" + query) if query else "")
+
+
+def _ymd(value):
+    m = _YMD.match(str(value or ""))
+    return "%s%s%s" % m.groups() if m else ""
+
+
+def _num(value):
+    s = str(value or "").strip()
+    return s if _NUM.match(s) else ""
+
+
+def _event_state(ev):
+    try:
+        comp = (ev.get("competitions") or [{}])[0]
+        st = (comp.get("status") or ev.get("status") or {}).get("type") or {}
+    except Exception:  # noqa
+        return ""
+    return st.get("state") or ""
+
+
+def _payload_live(payload):
+    if not isinstance(payload, dict):
+        return False
+    evs = payload.get("events")
+    if not isinstance(evs, list):
+        return False
+    return any(_event_state(ev) == "in" for ev in evs)
+
+
+def followup_urls(path, payload, today):
+    """At most two more scoreboard URLs, taken from the calendar ESPN sends with the current board.
+
+    Day calendars (NBA, NHL, soccer, ...): the previous match day and the next one. That is how a Sunday
+    final, or a game later in the week, still shows up — the old "yesterday and today" window dropped them.
+    Week calendars (NFL, college football): the next week, and only when this board has no live or upcoming
+    game (the current week is already on the undated board). Every URL stays on HOST; calendar text that is
+    not a date or a week number is ignored.
+    """
+    if not _PATH_OK.match(path or "") or not isinstance(payload, dict):
+        return []
+    leagues = payload.get("leagues") or []
+    if not leagues or not isinstance(leagues[0], dict):
+        return []
+    cal = leagues[0].get("calendar")
+    if not isinstance(cal, list) or not cal:
+        return []
+    base = board_url(path)
+    today_s = today.strftime("%Y%m%d")
+    if isinstance(cal[0], str):
+        days = sorted({d for d in (_ymd(x) for x in cal) if d})
+        prev = max((d for d in days if d < today_s), default="")
+        nxt = min((d for d in days if d > today_s), default="")
+        return [base + "?dates=" + d for d in (prev, nxt) if d][:2]
+    if not isinstance(cal[0], dict):
+        return []
+    evs = payload.get("events") if isinstance(payload.get("events"), list) else []
+    if any(_event_state(ev) in ("in", "pre") for ev in evs):
+        return []
+    best = None
+    for group in cal:
+        if not isinstance(group, dict):
+            continue
+        season = _num(group.get("value"))
+        if not season:
+            continue
+        for entry in group.get("entries") or []:
+            if not isinstance(entry, dict):
+                continue
+            week = _num(entry.get("value"))
+            start = _ymd(entry.get("startDate"))
+            if week and start and start >= today_s and (best is None or start < best[0]):
+                best = (start, season, week)
+    if not best:
+        return []
+    return [base + "?seasontype=%s&week=%s" % (best[1], best[2])]
+
+
+def dated_fallback(path, today):
+    """Used only when the current board could not be read: yesterday, today and tomorrow."""
+    if not _PATH_OK.match(path or ""):
+        return []
+    days = [(today - timedelta(days=1)).strftime("%Y%m%d"), today.strftime("%Y%m%d"), (today + timedelta(days=1)).strftime("%Y%m%d")]
+    return [board_url(path, "dates=" + d) for d in days]
 
 
 def team_names(t):
@@ -87,27 +185,47 @@ def parse_event(ev, league):
             "clock": (comp.get("status") or {}).get("displayClock", "")}
 
 
+def refresh_seconds(games, stale, error):
+    if any(g.get("state") == "in" for g in games or []):
+        return LIVE_REFRESH
+    if stale or error:
+        return RETRY_REFRESH
+    return QUIET_REFRESH
+
+
 class Scores:
     def __init__(self, fetch=fetch_json, now=time.time):
         self.fetch, self.now = fetch, now
-        self.cache = {}          # url -> (t, json|None, err)
+        self.cache = {}          # url -> {t, json, err, stale, good, ttl}
 
     def _get(self, url):
         c = self.cache.get(url)
-        if c and self.now() - c[0] < CACHE_SECONDS:
-            return c[1], c[2]
+        if c and self.now() - c["t"] < c["ttl"]:
+            return c["json"], c["err"], c["stale"]
         try:
-            j, err = self.fetch(url), ""
+            j = self.fetch(url)
+            err, stale, good = "", False, j
         except Exception as e:  # noqa
-            j, err = None, type(e).__name__
-        self.cache[url] = (self.now(), j, err)
-        return j, err
+            good = (c or {}).get("good")
+            j, err, stale = good, type(e).__name__, good is not None
+        ttl = RETRY_REFRESH if err else (LIVE_REFRESH if _payload_live(j) else QUIET_REFRESH)
+        self.cache[url] = {"t": self.now(), "json": j, "err": err, "stale": stale, "good": good, "ttl": ttl}
+        return j, err, stale
+
+    def _fetch(self, jobs):
+        if not jobs:
+            return []
+        def run(job):
+            j, err, stale = self._get(job[3])
+            return job, j, err, stale
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            return list(ex.map(run, jobs))
 
     def games(self, sports, today=None):
-        """sports = profile.sports.  Returns {games:[...], error:'', unsupported:[sports], checked:int}.
-        Each game: league, state(pre|in|post), detail, start, home/away {name,abbr,score,winner}, mine (the followed team's name), sport."""
+        """sports = profile.sports.  Returns {games, error, unsupported, checked, stale, refresh_seconds}.
+        Each game: league, state(pre|in|post), detail, start, home/away {name,abbr,score,winner}, mine (the followed team's name), sport.
+        stale is true when a board could not be refreshed and the previous one is still being shown."""
         today = today or datetime.now(timezone.utc).date()
-        days = [(today - timedelta(days=1)).strftime("%Y%m%d"), today.strftime("%Y%m%d")]      # ESPN rejects date ranges: one request per day
         jobs, unsupported = [], []
         for e in sports or []:
             paths = league_paths(e)
@@ -115,17 +233,22 @@ class Scores:
                 unsupported.append(e.get("sport"))
                 continue
             for path, label in paths:
-                for d in days:
-                    jobs.append((e, path, label, d))
-        results = []
-        def run(job):
-            e, path, label, d = job
-            j, err = self._get(HOST + path + "/scoreboard?dates=" + d)
-            return job, j, err
-        with ThreadPoolExecutor(max_workers=6) as ex:
-            results = list(ex.map(run, jobs))
+                jobs.append((e, path, label, board_url(path)))
+        rows = self._fetch(jobs)
+        seen_urls = {job[3] for job, _j, _e, _s in rows}
+        extra = []
+        for (e, path, label, _url), j, _err, _stale in rows:
+            more = dated_fallback(path, today) if j is None else followup_urls(path, j, today)
+            for url in more:
+                if url not in seen_urls:
+                    seen_urls.add(url)
+                    extra.append((e, path, label, url))
+        rows.extend(self._fetch(extra))
         games, errors, seen = [], 0, set()
-        for (e, path, label, _d), j, err in results:
+        stale = False
+        for (e, _path, label, _url), j, _err, was_stale in rows:
+            if was_stale:
+                stale = True
             if j is None:
                 errors += 1
                 continue
@@ -159,9 +282,11 @@ class Scores:
         order = {"in": 0, "pre": 1, "post": 2}
         games.sort(key=lambda g: (order.get(g["state"], 3), g["start"] if g["state"] != "post" else "~" + "".join(chr(255 - ord(c)) for c in g["start"])))
         err = ""
-        if jobs and errors == len(jobs):
+        if rows and errors == len(rows):
             err = "Live scores are unavailable right now (offline, or the score service didn't answer)."
-        return {"games": games, "error": err, "unsupported": unsupported, "checked": len(jobs) - errors}
+            stale = False
+        return {"games": games, "error": err, "unsupported": unsupported, "checked": len(rows) - errors,
+                "stale": stale, "refresh_seconds": refresh_seconds(games, stale, err)}
 
 
 def speak_game(g, my_team=None):

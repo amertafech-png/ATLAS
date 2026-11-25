@@ -1,3 +1,11 @@
+## ATLAS 1.4.4
+
+**The Sports panel keeps itself up to date.**
+
+- **Scores refresh on their own.** While one of your teams is playing, the Sports panel asks again about every 15 seconds. When it is only showing a final or an upcoming game, it waits about 5 minutes. You don't have to restart ATLAS or press refresh.
+- **Finals and later games stay visible.** A weekend result, or a game a few days out, no longer disappears just because it isn't yesterday or today. The panel shows the live score during a game, and the latest final or the next game otherwise.
+- **A dead score service doesn't blank the panel.** If ESPN doesn't answer, the last scores stay on screen with a small **stale** mark. Only the sports and teams you still follow are requested, and nothing is invented.
+
 ## ATLAS 1.4.3
 
 **Fixes: panels no longer disappear after a long answer, calendar questions use ATLAS's own calendar, and there is always a way to reset the screen.**
