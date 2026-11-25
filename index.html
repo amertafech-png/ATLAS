@@ -1099,10 +1099,24 @@ cv.addEventListener('click',()=>voiceToggle());
 document.getElementById('mic').addEventListener('click',()=>voiceToggle());
 document.getElementById('mic2').addEventListener('click',()=>voiceToggle());
 cv.addEventListener('keydown',e=>{if(e.code==='Enter'){e.preventDefault();voiceToggle()}});
+const launchedKiosk=/(?:[?&])kiosk=1(?:&|$)/.test(location.search);   /* launcher added this only for a --kiosk window */
+function hudCovers(){
+  const on=id=>{const el=document.getElementById(id);return !!(el&&el.classList.contains('open'))};
+  return !!(document.getElementById('rs-menu')||on('ov')||on('setup')||on('cfm')||on('modbox'));
+}
 window.addEventListener('keydown',e=>{const tg=e.target.tagName;
   if((e.ctrlKey||e.metaKey)&&e.key===','){e.preventDefault();if(SU.open)closeSetup();ATLAS.openSettings();return}
+  if((e.ctrlKey||e.metaKey)&&e.shiftKey&&(e.key==='R'||e.key==='r'))return;   /* Reset menu: the early listener already opened it */
+  if(e.key==='F11'||(e.ctrlKey&&e.metaKey&&(e.key==='f'||e.key==='F'))){e.preventDefault();syncWindow(!(launchedKiosk||document.fullscreenElement));return}
   if(e.code==='Space'&&tg!=='INPUT'&&tg!=='TEXTAREA'&&tg!=='BUTTON'){e.preventDefault();voiceToggle()}
-  if(e.key==='Escape'){if(CONV.state==='arming')convEnd('Esc');else if(orbMode==='listening')voiceCancel();else closeOv();}});
+  if(e.key==='Escape'){
+    if(CONV.state==='arming'){e.preventDefault();convEnd('Esc');return}
+    if(orbMode==='listening'){e.preventDefault();voiceCancel();return}
+    const rs=document.getElementById('rs-menu');if(rs){e.preventDefault();rs.remove();return}
+    if(hudCovers()){e.preventDefault();closeOv();return}   /* Settings, Reset, confirm: Esc closes those and stays full screen */
+    if((launchedKiosk||document.fullscreenElement)&&tg!=='INPUT'&&tg!=='TEXTAREA'){e.preventDefault();syncWindow(false);return}
+    closeOv();
+  }});
 const N=96;
 function frame(now){
   const t=(now-t0)/1000;
@@ -1437,6 +1451,7 @@ function applyLocal(r){
   if(ch.indexOf('calendar.sources')>=0)loadCalendar(true);
   if(ch.indexOf('user.sports')>=0)loadScores();
   if(ch.length){ED=null;loadSettings();if(ovMode==='settings')renderSettings(true)}
+  if(ch.indexOf('window.fullscreen')>=0&&r.prefs)syncWindow(!!r.prefs.fullscreen);
   if(r.ui&&r.ui.open==='ai'){SU.sel=r.ui.provider||'';openSetup({ai:true})}
   if(r.ui&&r.ui.open==='modules')openModules(r.ui.module||null);
   if(r.ui&&r.ui.open==='settings'){if(SU.open)closeSetup();ATLAS.openSettings()}
@@ -1564,6 +1579,21 @@ function applyPrefs(p){
   if(p.layout)applyLayout(p.layout);
 }
 async function loadSettings(){try{const j=await api('/api/settings');SETS=j.settings||[];applyPrefs(j.prefs);if(j.profile)applyProfile(j.profile);if(j.assistant)applyAssistant(j.assistant);if(ovMode==='settings'&&setTab==='general')renderSettings(true)}catch(e){}}
+/* Full screen. A click or F11 tries the Fullscreen API first (instant, and Esc leaves it).
+   A window that was launched with --kiosk (?kiosk=1) cannot leave that mode in place, so the bridge starts the launcher again.
+   Voice has no click, so "full screen" from a normal window also relaunches into --kiosk. Links stay on /api/open-url either way. */
+async function syncWindow(on){
+  const hadApi=!!document.fullscreenElement;
+  let entered=false;
+  if(on&&!launchedKiosk&&!hadApi){try{await document.documentElement.requestFullscreen();entered=true}catch(e){entered=false}}
+  if(!on&&hadApi){try{await document.exitFullscreen()}catch(e){}}
+  let j=null;
+  try{j=await post('/api/window/fullscreen',{on:!!on,kiosk:!!launchedKiosk,api:hadApi||entered,api_failed:!!(on&&!launchedKiosk&&!hadApi&&!entered)})}
+  catch(e){log('Full screen failed · '+e.message);return}
+  if(j.settings)SETS=j.settings;
+  if(j.prefs)applyPrefs(j.prefs);
+  if(j.message)log(j.message);
+}
 /* a setting changed from the Settings screen: the bridge applies and saves it; a risky one asks first (409 + prompt) */
 async function setSetting(id,value){
   try{
@@ -1959,7 +1989,9 @@ function renderGeneralTab(){
   body.innerHTML=h+'<div class="setgrp">Calendars</div><div id="calblk"></div><div class="prow"><span class="msg" id="gmsg"></span></div><details class="sayhelp"><summary>What can I say or type?</summary><p>Everything on these screens can also be changed by voice or chat. Risky changes (microphone on, switching the AI, add-ons, reset) always ask you to say yes first.</p><ul>'+ex+'</ul></details>';
   const msg=t=>{const m=document.getElementById('gmsg');if(m)m.textContent=t||''};
   drawCalBlock();
-  body.querySelectorAll('[data-gset]').forEach(b=>b.onclick=async()=>{const id=b.dataset.gset;const j=await setSetting(id,!b.classList.contains('on'));if(j){msg(j.message||'');renderSettings(true)}});
+  body.querySelectorAll('[data-gset]').forEach(b=>b.onclick=async()=>{const id=b.dataset.gset;
+    if(id==='window.fullscreen'){const next=!b.classList.contains('on');await syncWindow(next);await loadSettings();renderSettings(true);return}
+    const j=await setSetting(id,!b.classList.contains('on'));if(j){msg(j.message||'');renderSettings(true)}});
   body.querySelectorAll('[data-gsel]').forEach(sel=>sel.onchange=async()=>{const j=await setSetting(sel.dataset.gsel,sel.value);if(j){msg(j.message||'');renderSettings(true)}});
   body.querySelectorAll('[data-gact]').forEach(b=>b.onclick=async()=>{
     const id=b.dataset.gact,s=SETS.find(x=>x.id===id);

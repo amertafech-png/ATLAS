@@ -63,6 +63,9 @@ PREF_BOOLS = {
     "computer.confirm": ("launch_confirm", True, "Okay, I'll ask before opening an app or game.", "Okay, I'll open apps and games as soon as you ask. Say turn on launch confirmation to go back to asking."),
     "reminders.chime": ("reminder_chime", True, "Okay, reminders and timers will play a chime before they speak.", "Okay, reminders and timers will speak without the chime."),
     "brief.morning": ("brief_morning", False, "Okay, I'll read you your brief the first time you open me each morning.", "Okay, no automatic morning brief. You can still say give me my brief."),
+    "window.fullscreen": ("fullscreen", True,
+                          "Full screen is on. The window covers the screen. Say exit full screen, or press F11 or Esc, to leave it. On a Mac, Control Command F does the same.",
+                          "Full screen is off. Say full screen, or press F11, to cover the screen again."),
 }
 
 
@@ -122,6 +125,10 @@ def static_registry():
           ui="ai", confirm="always", choices=sorted(set(PROVIDER_WORDS.values())), examples=["switch to Claude", "change my AI provider to ChatGPT"],
           desc="Changing it opens the sign-in screen for that AI."),
         # ---- system
+        S("window.fullscreen", "Full screen", "System", "bool",
+          ["full screen", "fullscreen", "full-screen mode", "kiosk mode", "kiosk"],
+          examples=["full screen", "exit full screen", "turn off full screen"],
+          desc="Cover the whole monitor: no title bar, and on Windows the taskbar hides. On by default. F11 or Esc leaves it (on a Mac, Control Command F). Settings and Reset stay on screen. Links still open in your usual browser."),
         S("login", "Start when I sign in", "System", "bool", ["start at login", "start at sign in", "start at sign-in", "start when i log in", "start on login", "launch at login", "run at login", "startup", "start at startup"],
           examples=["turn on start at login", "turn off start at login"], desc="Starts the ATLAS background part when you sign in to your computer."),
         S("updates.auto", "Automatic update checks", "System", "bool", ["automatic updates", "auto updates", "auto update", "automatic update checks", "update checks", "updates", "auto-updates"],
@@ -328,7 +335,7 @@ class Settings:
     def prefs_view(self):
         p = self.env.cfg.get("prefs") or {}
         return {"conversation_on": bool(p.get("conversation_on", True)), "conversation_secs": int(p.get("conversation_secs", 6)),
-                "mute": bool(p.get("mute", False)), "live_scores": bool(p.get("live_scores", True)), "reminder_chime": bool(p.get("reminder_chime", True)), "launch_confirm": bool(p.get("launch_confirm", True)), "skin": p.get("skin") if p.get("skin") in SKINS else "cyan", "task_animations": bool(p.get("task_animations", True)), "brief_morning": bool(p.get("brief_morning", False)), "brief_last": str(p.get("brief_last", "")), "layout": L.get_layout(p), "panels_available": sorted(panels_available(self.env))}
+                "mute": bool(p.get("mute", False)), "live_scores": bool(p.get("live_scores", True)), "reminder_chime": bool(p.get("reminder_chime", True)), "launch_confirm": bool(p.get("launch_confirm", True)), "fullscreen": bool(p.get("fullscreen", True)), "skin": p.get("skin") if p.get("skin") in SKINS else "cyan", "task_animations": bool(p.get("task_animations", True)), "brief_morning": bool(p.get("brief_morning", False)), "brief_last": str(p.get("brief_last", "")), "layout": L.get_layout(p), "panels_available": sorted(panels_available(self.env))}
 
     def _pref(self, key, value):
         prefs = self.env.cfg.setdefault("prefs", {})
@@ -390,6 +397,12 @@ class Settings:
             return Intent(op="open_ui")
         if re.fullmatch(r"what (?:can|could) i (?:change|set|control|configure)(?: by voice| with my voice)?|what settings can i (?:change|set|control)|what can i say(?: to change settings)?|help with settings", low):
             return Intent(op="help")
+
+        # full screen: "exit full screen" / "full screen" (also "turn off full screen" via the generic on/off grammar below)
+        if re.fullmatch(r"(?:exit|leave|stop|end|quit|close|get out of) (?:the )?(?:full ?screen|fullscreen|kiosk)(?: mode)?", low):
+            return Intent(op="set", id="window.fullscreen", value=False)
+        if re.fullmatch(r"(?:(?:go|enter|start|switch to|put it in) |make it )?(?:full ?screen|fullscreen|kiosk)(?: mode)?", low):
+            return Intent(op="set", id="window.fullscreen", value=True)
 
         m = re.fullmatch(r"(mute|unmute)(?: yourself| the sound| the audio| sound| audio| voice| replies| spoken replies| the voice)?", low)
         if m:
@@ -730,7 +743,7 @@ class Settings:
             return self._r("Opening Settings. You can also click Settings at the right end of the bar at the bottom, or press Ctrl and comma.", [], ui={"open": "settings"})
         if op == "help":
             return self._r("You can say things like: turn off the wake word, mute, turn off conversation mode, set the listening window to 10 seconds, change your name to Nova, "
-                           "set my city to Dallas, remove soccer, stop following Juventus, switch to Claude, hide the weather panel, turn off automatic updates, "
+                           "set my city to Dallas, remove soccer, stop following Juventus, switch to Claude, hide the weather panel, full screen, exit full screen, turn off automatic updates, "
                            "or what are my settings. Risky ones, like switching the AI, turning the microphone on or resetting, always ask you first.")
         if op == "sports":
             return await self._sports_exec(it)
@@ -957,7 +970,7 @@ class Settings:
             bits.append("%s: %s" % (s.title.lower(), v or "not set"))
         sp = self.get(self.by_id("user.sports"))
         bits.append("sports: " + (say_list([x["sport"] for x in sp]) if sp else "none"))
-        for sid in ("conversation.on", "conversation.secs", "mute", "ai.provider", "voice.name", "voice.speed", "login", "updates.auto"):
+        for sid in ("conversation.on", "conversation.secs", "mute", "ai.provider", "voice.name", "voice.speed", "window.fullscreen", "login", "updates.auto"):
             s = self.by_id(sid)
             v = self.get(s)
             bits.append("%s: %s" % (s.title.lower(), ("on" if v else "off") if s.kind == "bool" else ("%d seconds" % v if s.kind == "int" else (v or "not connected"))))

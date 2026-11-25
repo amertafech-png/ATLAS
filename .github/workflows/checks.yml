@@ -104,6 +104,7 @@ jobs:
         run: |
           bash tools/check-app-window.sh
           python bridge/dev/test_app_window.py
+          python bridge/dev/test_fullscreen.py
 
       - name: Installer hides its console in window mode
         run: bash tools/check-installer-console.sh
