@@ -49,26 +49,49 @@ check("speak: finished game", S.speak_game(gg, "Juventus") == "Juventus beat Tor
 check("speak: lost game (from the other side)", "lost to Juventus" in S.speak_game(gg, "Torino"))
 check("speak: live game", "playing now" in S.speak_game(S.parse_event(SERIE_A["events"][1], "Serie A"), "Roma"))
 
-# ---- auto-refresh: calendar windows, live vs quiet cadence, keep last board when ESPN is down
+# ---- window: 7 days back and 14 ahead, not only the adjacent match days. Live vs quiet cadence, keep last board when ESPN is down.
 def board(events, calendar):
     return {"events": events, "leagues": [{"calendar": calendar}]}
-DAY_CAL = ["2026-11-16T12:00Z", "2026-11-20T12:00Z", "2026-11-23T12:00Z", "not-a-date", "https://evil.example/steal"]
-OLD = {"events": [ev("old", ("Juventus", "JUV"), ("Torino", "TOR"), "2", "1", "post", "FT", "2026-11-16T19:00Z")]}
-NXT = {"events": [ev("nxt", ("Juventus", "JUV"), ("AC Milan", "MIL"), "", "", "pre", "Sun 2:45 PM", "2026-11-23T19:45Z")]}
+# Today is Fri 20 Nov. The old window kept only 18 Nov (previous match day) and 23 Nov (next).
+# 16 Nov and 28 Nov are inside 7 back / 14 ahead but are not those two days. 10 Nov and 20 Dec are outside.
+DAY_CAL = ["2026-11-10T12:00Z", "2026-11-16T12:00Z", "2026-11-18T12:00Z", "2026-11-23T12:00Z", "2026-11-28T12:00Z", "2026-12-20T12:00Z", "not-a-date", "https://evil.example/steal"]
+BY_DATE = {
+    "20261116": {"events": [ev("gap-final", ("Juventus", "JUV"), ("Torino", "TOR"), "2", "1", "post", "FT", "2026-11-16T19:00Z")]},
+    "20261118": {"events": [ev("adj-final", ("AC Milan", "MIL"), ("Como", "COM"), "1", "0", "post", "FT", "2026-11-18T19:00Z")]},
+    "20261123": {"events": [ev("adj-next", ("Monza", "MON"), ("Fiorentina", "FIO"), "", "", "pre", "Mon 7:45 PM", "2026-11-23T19:45Z")]},
+    "20261128": {"events": [ev("gap-next", ("Juventus", "JUV"), ("AC Milan", "MIL"), "", "", "pre", "Sat 2:45 PM", "2026-11-28T19:45Z"),
+                            ev("later", ("Juventus", "JUV"), ("Napoli", "NAP"), "", "", "pre", "Sun 2:45 PM", "2026-12-02T19:45Z")]},
+}
 day_calls = []
 def fetch_days(url):
     day_calls.append(url)
-    if "dates=20261116" in url: return OLD
-    if "dates=20261123" in url: return NXT
+    for key, payload in BY_DATE.items():
+        if "dates=" + key in url: return payload
     if url.endswith("/scoreboard"): return board([], DAY_CAL)
     raise AssertionError("unexpected url " + url)
 rd = S.Scores(fetch_days, now=lambda: 2000.0).games([{"sport": "Soccer", "leagues": ["Serie A"], "teams": ["Juventus"]}], date(2026, 11, 20))
 ids = [g["id"] for g in rd["games"]]
-check("a final from the previous match day still shows (not only yesterday)", "old" in ids and any(g["id"] == "old" and g["state"] == "post" for g in rd["games"]), ids)
-check("the next match day is shown too", "nxt" in ids and any(g["state"] == "pre" for g in rd["games"] if g["id"] == "nxt"), ids)
+check("a final on a non-adjacent day inside the last 7 days still shows", sorted(ids) == ["gap-final", "gap-next"], ids)
+check("a later game in the window does not replace the next one", "later" not in ids, ids)
+check("teams you do not follow on the adjacent match days are not pulled in", "adj-final" not in ids and "adj-next" not in ids, ids)
+asked_days = sorted(u.split("dates=")[-1] for u in day_calls if "dates=" in u)
+check("every match day in the window is requested, and days outside it are not", asked_days == ["20261116", "20261118", "20261123", "20261128"], asked_days)
 check("calendar lookups stay on the ESPN host", all(u.startswith(S.HOST) and "evil" not in u for u in day_calls), day_calls)
 check("nothing live -> slow refresh", rd["refresh_seconds"] == S.QUIET_REFRESH and rd["stale"] is False, rd["refresh_seconds"])
 check("bad calendar text and a bad path add no url", S.followup_urls("../evil", board([], DAY_CAL), date(2026, 11, 20)) == [] and S.followup_urls("https://evil.example/x", board([], DAY_CAL), date(2026, 11, 20)) == [])
+
+# A live game replaces the final and the next one. A final from outside the window is dropped when nothing is live.
+live_board = {"events": [
+    ev("old-out", ("Juventus", "JUV"), ("Torino", "TOR"), "3", "0", "post", "FT", "2026-10-01T19:00Z"),
+    ev("final-in", ("Juventus", "JUV"), ("Roma", "ROM"), "1", "1", "post", "FT", "2026-11-18T19:00Z"),
+    ev("live-now", ("Juventus", "JUV"), ("Milan", "MIL"), "2", "0", "in", "67'", "2026-11-20T19:00Z"),
+    ev("next-in", ("Juventus", "JUV"), ("Napoli", "NAP"), "", "", "pre", "Sat", "2026-11-28T19:45Z")]}
+rlive = S.Scores(lambda u: live_board, now=lambda: 2100.0).games([{"sport": "Soccer", "leagues": ["Serie A"], "teams": ["Juventus"]}], date(2026, 11, 20))
+check("a live game is what the team shows, not the final and the next game as well", [g["id"] for g in rlive["games"]] == ["live-now"], [g["id"] for g in rlive["games"]])
+quiet_board = {"events": [e for e in live_board["events"] if e["id"] != "live-now"]}
+rquiet = S.Scores(lambda u: quiet_board, now=lambda: 2200.0).games([{"sport": "Soccer", "leagues": ["Serie A"], "teams": ["Juventus"]}], date(2026, 11, 20))
+check("with nothing live, the latest final inside the window and the next game are kept", [g["id"] for g in rquiet["games"]] == ["next-in", "final-in"], [g["id"] for g in rquiet["games"]])
+check("a final from outside the window is not shown", "old-out" not in [g["id"] for g in rquiet["games"]])
 
 NFL_CAL = [{"label": "Regular Season", "value": "2", "entries": [
     {"label": "Week 11", "value": "11", "startDate": "2026-11-18T08:00Z"},
@@ -78,8 +101,9 @@ NFL_CAL = [{"label": "Regular Season", "value": "2", "entries": [
 post_only = [ev("sun", ("Chicago Bears", "CHI"), ("New Orleans Saints", "NO"), "21", "13", "post", "Final", "2026-11-22T18:00Z")]
 upcoming = {"events": [ev("wed", ("Green Bay Packers", "GB"), ("Los Angeles Rams", "LAR"), "", "", "pre", "Wed 8:00 PM", "2026-11-26T01:00Z"),
                        ev("sun2", ("Chicago Bears", "CHI"), ("Detroit Lions", "DET"), "", "", "pre", "Sun 1:00 PM", "2026-11-26T18:00Z")]}
-check("next week is requested only once the current slate is all finals", S.followup_urls("football/nfl", board(post_only, NFL_CAL), date(2026, 11, 24)) == [S.board_url("football/nfl", "seasontype=2&week=12")])
-check("a live or upcoming game on the current board does not fetch another week", S.followup_urls("football/nfl", board([ev("live", ("Chicago Bears", "CHI"), ("Detroit Lions", "DET"), "7", "3", "in", "Q2")], NFL_CAL), date(2026, 11, 22)) == [])
+WEEKS = [S.board_url("football/nfl", "seasontype=2&week=11"), S.board_url("football/nfl", "seasontype=2&week=12")]
+check("weeks that overlap the window are requested, not only the next one", S.followup_urls("football/nfl", board(post_only, NFL_CAL), date(2026, 11, 24)) == WEEKS)
+check("a live game does not hide the weeks still inside the window", S.followup_urls("football/nfl", board([ev("live", ("Chicago Bears", "CHI"), ("Detroit Lions", "DET"), "7", "3", "in", "Q2", "2026-11-22T18:00Z")], NFL_CAL), date(2026, 11, 22)) == WEEKS)
 wk_calls = []
 def fetch_week(url):
     wk_calls.append(url)

@@ -1,9 +1,11 @@
 """Scores for the teams you follow, from ESPN's public scoreboard JSON (site.api.espn.com - no account, no key).
 
-The current scoreboard (no date) is what ESPN keeps fresh during a game. A second, small look at the league calendar
-picks up the previous match day and the next one, so a final or a later fixture still shows after it has left
-"yesterday and today". While a followed team is playing, the answer is reused for only a few seconds; otherwise it
-is reused for several minutes. If ESPN does not answer, the last good scoreboard is kept and marked stale.
+The current scoreboard (no date) is what ESPN keeps fresh during a game. The league calendar that comes with it
+is then read for every match day from 7 days ago through 14 days ahead (or every week that overlaps that window).
+A team that skipped the previous match day, or does not play on the next one, still has its latest final and its
+next game. ESPN rejects a single dates=start-end request, so each day or week is its own request on this host.
+While a followed team is playing, that board is reused for only a few seconds; otherwise it is reused for several
+minutes. If ESPN does not answer, the last good scoreboard is kept and marked stale.
 Only the host site.api.espn.com is ever contacted, over https, and only to read; nothing about you is sent except the league path.
 """
 import json
@@ -15,6 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 HOST = "https://site.api.espn.com/apis/site/v2/sports/"
+LOOKBACK_DAYS = 7          # finals older than this are outside the panel's window
+LOOKAHEAD_DAYS = 14        # games further out than this are outside the panel's window
 LIVE_REFRESH = 15          # a followed team is in a game: ESPN's own cache is about 10 seconds
 QUIET_REFRESH = 300        # nothing live: finals and upcoming games do not move
 RETRY_REFRESH = 30         # the last fetch failed: try again soon, but keep showing the previous board
@@ -88,14 +92,42 @@ def _payload_live(payload):
     return any(_event_state(ev) == "in" for ev in evs)
 
 
-def followup_urls(path, payload, today):
-    """At most two more scoreboard URLs, taken from the calendar ESPN sends with the current board.
+def window_bounds(today):
+    """Inclusive YYYYMMDD bounds: 7 days back through 14 days ahead."""
+    start = today - timedelta(days=LOOKBACK_DAYS)
+    end = today + timedelta(days=LOOKAHEAD_DAYS)
+    return start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
 
-    Day calendars (NBA, NHL, soccer, ...): the previous match day and the next one. That is how a Sunday
-    final, or a game later in the week, still shows up — the old "yesterday and today" window dropped them.
-    Week calendars (NFL, college football): the next week, and only when this board has no live or upcoming
-    game (the current week is already on the undated board). Every URL stays on HOST; calendar text that is
-    not a date or a week number is ignored.
+
+def _shift_ymd(ymd, days):
+    try:
+        return (datetime.strptime(ymd, "%Y%m%d").date() + timedelta(days=days)).strftime("%Y%m%d")
+    except ValueError:
+        return ""
+
+
+def in_window(game, today):
+    """A live game is always kept. Anything else must start inside the 7-day / 14-day window.
+    A game with no readable start is kept: dropping it would hide a score we already parsed."""
+    if game.get("state") == "in":
+        return True
+    start = _ymd(game.get("start"))
+    if not start:
+        return True
+    lo, hi = window_bounds(today)
+    return lo <= start <= hi
+
+
+def followup_urls(path, payload, today):
+    """More scoreboard URLs, taken from the calendar ESPN sends with the current board.
+
+    Day calendars (NBA, NHL, soccer, ...): every match day from 7 days ago through 14 days ahead.
+    The previous single match day and the next one are not enough — a team that rested on those two
+    dates (a Friday-only fixture, a bye, a midweek game) never appeared.
+    Week calendars (NFL, college football): every week that overlaps that same window, including while
+    another team is still live, so a team that already finished this week still gets next week's game.
+    ESPN rejects dates=start-end (HTTP 400), so each day or week is its own URL. Every URL stays on HOST;
+    calendar text that is not a date or a week number is ignored.
     """
     if not _PATH_OK.match(path or "") or not isinstance(payload, dict):
         return []
@@ -106,18 +138,13 @@ def followup_urls(path, payload, today):
     if not isinstance(cal, list) or not cal:
         return []
     base = board_url(path)
-    today_s = today.strftime("%Y%m%d")
+    lo, hi = window_bounds(today)
     if isinstance(cal[0], str):
-        days = sorted({d for d in (_ymd(x) for x in cal) if d})
-        prev = max((d for d in days if d < today_s), default="")
-        nxt = min((d for d in days if d > today_s), default="")
-        return [base + "?dates=" + d for d in (prev, nxt) if d][:2]
+        days = sorted({d for d in (_ymd(x) for x in cal) if d and lo <= d <= hi})
+        return [base + "?dates=" + d for d in days]
     if not isinstance(cal[0], dict):
         return []
-    evs = payload.get("events") if isinstance(payload.get("events"), list) else []
-    if any(_event_state(ev) in ("in", "pre") for ev in evs):
-        return []
-    best = None
+    found = []
     for group in cal:
         if not isinstance(group, dict):
             continue
@@ -129,11 +156,20 @@ def followup_urls(path, payload, today):
                 continue
             week = _num(entry.get("value"))
             start = _ymd(entry.get("startDate"))
-            if week and start and start >= today_s and (best is None or start < best[0]):
-                best = (start, season, week)
-    if not best:
-        return []
-    return [base + "?seasontype=%s&week=%s" % (best[1], best[2])]
+            if not week or not start:
+                continue
+            end = _ymd(entry.get("endDate")) or _shift_ymd(start, 6)
+            if end and start <= hi and end >= lo:
+                found.append((start, season, week))
+    found.sort()
+    urls, seen = [], set()
+    for _start, season, week in found:
+        query = "seasontype=%s&week=%s" % (season, week)
+        if query in seen:
+            continue
+        seen.add(query)
+        urls.append(base + "?" + query)
+    return urls
 
 
 def dated_fallback(path, today):
@@ -183,6 +219,40 @@ def parse_event(ev, league):
     return {"id": ev.get("id"), "league": league, "state": st.get("state") or "pre", "detail": st.get("shortDetail") or st.get("detail") or "",
             "completed": bool(st.get("completed")), "start": ev.get("date") or comp.get("date") or "", "home": side(home), "away": side(away),
             "clock": (comp.get("status") or {}).get("displayClock", "")}
+
+
+def choose_games(games):
+    """For each followed team: the live game if there is one, otherwise the most recent final and the next game.
+    Games with no followed team (a league you follow without naming teams) are left as they are."""
+    grouped, loose, order = {}, [], []
+    for g in games:
+        mine = g.get("mine") or ""
+        if not mine:
+            loose.append(g)
+            continue
+        key = (g.get("sport") or "", mine)
+        if key not in grouped:
+            order.append(key)
+            grouped[key] = []
+        grouped[key].append(g)
+    out = []
+    for key in order:
+        gs = grouped[key]
+        live = [g for g in gs if g.get("state") == "in"]
+        if live:
+            out.extend(live)
+            continue
+        post = sorted((g for g in gs if g.get("state") == "post"), key=lambda g: g.get("start") or "", reverse=True)
+        pre = sorted((g for g in gs if g.get("state") == "pre"), key=lambda g: g.get("start") or "")
+        if post:
+            out.append(post[0])
+        if pre:
+            out.append(pre[0])
+        for g in gs:
+            if g.get("state") not in ("in", "pre", "post"):
+                out.append(g)
+    out.extend(loose)
+    return out
 
 
 def refresh_seconds(games, stale, error):
@@ -279,6 +349,7 @@ class Scores:
                 for side in ("home", "away"):
                     g[side].pop("team", None)
                 games.append(g)
+        games = choose_games([g for g in games if in_window(g, today)])
         order = {"in": 0, "pre": 1, "post": 2}
         games.sort(key=lambda g: (order.get(g["state"], 3), g["start"] if g["state"] != "post" else "~" + "".join(chr(255 - ord(c)) for c in g["start"])))
         err = ""

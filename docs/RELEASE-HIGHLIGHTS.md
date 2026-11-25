@@ -1,3 +1,12 @@
+## ATLAS 1.4.5
+
+**The Sports panel shows each team's latest result and next game, not only the nearest match day.**
+
+- **A wider schedule.** For every team you follow, ATLAS reads that league's games from 7 days ago through the next 2 weeks. A team that did not play on the previous match day, or does not play on the next one, still shows up.
+- **Last result and next game.** If your team is playing now, you see that live score. Otherwise you see the most recent final and the next game, with the date and time in your local time.
+- **A plain empty line.** If a team has no game in that window, the panel says so. The "Ask Hermes" button is gone.
+- **Same refresh as before.** About every 15 seconds while a game is live, about every 5 minutes otherwise. If ESPN doesn't answer, the last scores stay on screen marked stale.
+
 ## ATLAS 1.4.4
 
 **The Sports panel keeps itself up to date, and calendar questions use the same Google sign-in as your email.**
