@@ -68,7 +68,7 @@ This list was written from the code (`bash tools/list-downloads.sh` prints every
 
 ### Other network traffic (not downloads)
 * **Weather and city search:** when you set a city, the HUD asks `api.open-meteo.com` (forecast, by latitude/longitude) and `geocoding-api.open-meteo.com` (the city name you typed). No account, no key; nothing else is sent.
-* **Live scores (1.4):** only if you follow teams and Settings -> Live scores is on: `site.api.espn.com` (ESPN's public scoreboard). One request per league per day is made for scores; the request carries only the league and date. Turn it off with "turn off live scores".
+* **Live scores (1.4):** only if you follow teams and Settings -> Live scores is on: `site.api.espn.com` (ESPN's public scoreboard, no key). The Sports panel refreshes on its own (about every 15 seconds while a followed team is playing, about every 5 minutes otherwise). Each look reads that league's current scoreboard and, when the calendar says so, the previous and next match day; the request carries only the league and the date. If ESPN doesn't answer, the last scores stay on screen marked stale. Turn it off with "turn off live scores".
 * **Calendar (1.4):** only the address you add yourself (a Google/Outlook secret `.ics` link, https only; links to private network addresses are refused). A local `.ics` file is read from disk and sends nothing. The secret link is stored in your config and never shown in full.
 * **Add-on AI second opinion (1.4):** reviewing a new add-on sends that add-on's code to your own AI through Hermes (a separate session), the same path as any chat message. Nothing is sent unless you press Review.
 * **Reminders and timers (1.4):** stored in `reminders.json` in the ATLAS data folder; nothing is sent anywhere.

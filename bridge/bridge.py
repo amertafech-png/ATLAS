@@ -1618,7 +1618,8 @@ async def h_calendar_sources(request):
 async def h_scores(request):
     loop = asyncio.get_running_loop()
     r = await loop.run_in_executor(None, INFO.scores)
-    return web.json_response({"ok": True, "live": INFO.live_scores_on(), "followed": bool((CFG.get("profile") or {}).get("sports")), **r})
+    return web.json_response({"ok": True, "live": INFO.live_scores_on(), "followed": bool((CFG.get("profile") or {}).get("sports")), **r},
+                             headers={"Cache-Control": "no-store"})
 
 
 async def h_brief(request):

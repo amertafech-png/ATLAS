@@ -77,16 +77,16 @@ ATLAS uses the Edge/Chrome already on your computer for its window (nothing is i
 * **Skins and task animations:** cyan, ember, violet or emerald, and a centre that changes for thinking, searching, weather and music. ![Skins](docs/skins.png)
 * **Still planned as optional modules:** hand gestures and phone (Telegram) access.
 
-* **Made for you:** name your assistant (it ships as ATLAS; rename it to anything, 1-20 characters), and tell it your name, city, favorite sports and teams (installer or Settings). Weather and the globe follow your city (free Open-Meteo, no key). The Sports tile groups your teams by sport and can ask Hermes for the latest result on demand - there is no live score feed yet, and ATLAS never invents scores.
+* **Made for you:** name your assistant (it ships as ATLAS; rename it to anything, 1-20 characters), and tell it your name, city, favorite sports and teams (installer or Settings). Weather and the globe follow your city (free Open-Meteo, no key). The Sports panel follows only the sports and teams you leave on (remove any of them in Settings) and refreshes scores on its own from ESPN's public scoreboard (no key): about every 15 seconds while one of your teams is playing, and about every 5 minutes otherwise. It shows the live score during a game, and the latest final or the next game when nothing is live. If ESPN doesn't answer, the last scores stay on screen with a small "stale" mark. ATLAS never invents a score. **Ask Hermes** is still there if you want a sentence about a team.
 
-Known limits today: no live scores feed; the wake word needs a reasonably quiet room and works best with distinctive names; the other modules above are not built yet.
+Known limits today: the wake word needs a reasonably quiet room and works best with distinctive names; the other modules above are not built yet.
 
 ## Privacy
 * ATLAS runs on your computer. The HUD and bridge listen on `127.0.0.1` only and refuse requests from other websites.
 * **No data is sent to the ATLAS author or any ATLAS server. There is no telemetry, no account and no analytics.**
 * Your voice is transcribed on your machine. With the wake word on, your microphone stays open while ATLAS's window is open; that audio is analysed on your computer only, never saved or sent anywhere, and you can mute it with one click. Text you say or type goes to **Hermes Agent on your computer**, which sends it to **the AI provider you chose** (same as using Hermes in a terminal).
 * Network connections ATLAS itself makes: GitHub (`api.github.com`, to check for updates - disable under Settings -> Updates), Hugging Face (one-time speech model download), alphacephei.com (one-time ~41 MB wake-word model, only if you switch the wake word on),
-  and open-meteo.com (city lookup and weather for the city you entered). Webcam frames are only sent when you press Look.
+  open-meteo.com (city lookup and weather for the city you entered), and, only if you follow teams and leave live scores on, ESPN's public scoreboard (`site.api.espn.com` — the league and the date, no account). Webcam frames are only sent when you press Look.
 * Conversation history is stored locally in ATLAS's data folder (`%LOCALAPPDATA%\ATLAS` or `~/Library/Application Support/ATLAS`). Uninstalling can delete it.
 * Hermes' local API key is generated on your machine during install and is never printed or uploaded.
 

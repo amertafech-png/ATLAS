@@ -803,7 +803,8 @@ function applyProfile(p){
   document.getElementById('globeco').innerHTML=p.lat!=null?'LAT '+Math.abs(p.lat).toFixed(2)+'° '+(p.lat>=0?'N':'S')+'<br>LON '+Math.abs(p.lon).toFixed(2)+'° '+(p.lon>=0?'E':'W'):'&nbsp;<br>&nbsp;';
   renderTeams();loadWx();tick();
 }
-const SC={games:[],live:true,error:'',followed:false,loaded:false};
+const SC={games:[],live:true,error:'',followed:false,loaded:false,stale:false};
+let scoreTimer=null,scoresBusy=false;
 function gameBits(g){
   const h=g.home,a=g.away,mineHome=g.mine&&(h.name.toLowerCase().indexOf(g.mine.toLowerCase())>=0||g.mine.toLowerCase().indexOf(h.name.toLowerCase())>=0);
   const me=mineHome||!g.mine?h:a,op=me===h?a:h;
@@ -828,17 +829,34 @@ function renderTeams(){
       const gs=r[2];
       html+='<div class="match"><div class="row"><span class="teams">'+esc(r[0])+'</span><button class="btn" data-ask="'+(asks.length-1)+'" style="padding:.2vh .6vw">Ask Hermes</button></div>';
       if(gs.length)gs.slice(0,2).forEach(g=>{const b=gameBits(g);html+='<div class="gm"><div class="row"><span class="teams"><span class="lab">vs</span> '+esc(b.vs)+'</span><span class="score">'+esc(b.score)+'</span></div><div class="lab meta">'+b.meta+'</div></div>'});
-      else html+='<div class="lab meta">'+(!SC.live?'Live scores are off':SC.error?'Scores unavailable right now':SC.loaded?'No game today or yesterday':'Checking scores…')+'</div>';
+      else html+='<div class="lab meta">'+(!SC.live?'Live scores are off':SC.error?'Scores unavailable right now':SC.loaded?'No recent or upcoming game':'Checking scores…')+'</div>';
       html+='</div>'});
     if(!e.teams.length)gm.filter(g=>!g.mine).slice(0,6).forEach(g=>{const b=gameBits(g);html+='<div class="match gm"><div class="row"><span class="teams">'+esc(g.home.name)+' <span class="lab">vs '+esc(g.away.name)+'</span></span><span class="score">'+esc(b.score)+'</span></div><div class="lab meta">'+b.meta+'</div></div>'});
     html+='</div>'});
+  if(SC.stale)html='<div class="lab meta" id="scorestale">stale</div>'+html;
   el.innerHTML=html;
   el.querySelectorAll('[data-ask]').forEach(b=>b.onclick=()=>{if(!BR.online){log('Bridge offline');return}askHermes(asks[+b.dataset.ask],{speak:true})});
-  if(tg){const any=(SC.games||[]).some(g=>g.state==='in');tg.textContent=!SC.live?'Scores off':SC.error?'Offline':any?'Live':SC.loaded?((SC.games||[]).length?'Scores':'No games'):'Scores';tg.className='tag'+(any?' live':SC.error?' off':'')}
+  if(tg){const any=(SC.games||[]).some(g=>g.state==='in');
+    tg.textContent=!SC.live?'Scores off':SC.stale?(any?'Live · stale':'Scores · stale'):SC.error?'Offline':any?'Live':SC.loaded?((SC.games||[]).length?'Scores':'No games'):'Scores';
+    tg.className='tag'+(!SC.live?'':SC.stale&&!any?' warn':any?' live':SC.error?' off':'')}
+}
+/* The bridge picks the wait: ~15 s while a followed team is live, ~5 min otherwise. A failed fetch keeps the last board. */
+function scheduleScores(sec){
+  if(scoreTimer)clearTimeout(scoreTimer);
+  const wait=Math.max(15,Number(sec)||300);
+  scoreTimer=setTimeout(function(){scoreTimer=null;if(panelOn('sports')&&!document.hidden)loadScores();else if(panelOn('sports'))scheduleScores(wait)},wait*1000);
 }
 async function loadScores(){
-  if(!BR.online||!(PROF.sports||[]).length)return;
-  try{const j=await api('/api/scores');SC.games=j.games||[];SC.live=j.live!==false;SC.error=j.error||'';SC.followed=!!j.followed;SC.loaded=true;renderTeams()}catch(e){SC.error='offline';SC.loaded=true;renderTeams()}
+  if(scoresBusy)return;
+  if(!BR.online||!(PROF.sports||[]).length||!panelOn('sports')){if(scoreTimer){clearTimeout(scoreTimer);scoreTimer=null}return}
+  scoresBusy=true;if(scoreTimer){clearTimeout(scoreTimer);scoreTimer=null}
+  try{const j=await api('/api/scores',{cache:'no-store'});
+    if(j.stale&&!(j.games||[]).length&&(SC.games||[]).length){SC.stale=true;SC.error=''}
+    else{SC.games=j.games||[];SC.stale=!!j.stale;SC.error=j.stale?'':(j.error||'')}
+    SC.live=j.live!==false;SC.followed=!!j.followed;SC.loaded=true;renderTeams();
+    scheduleScores(j.refresh_seconds||((SC.games||[]).some(function(g){return g.state==='in'})?15:300));
+  }catch(e){SC.loaded=true;if((SC.games||[]).length){SC.stale=true;SC.error=''}else{SC.error='offline';SC.stale=false}renderTeams();scheduleScores(30)}
+  finally{scoresBusy=false}
 }
 renderTeams();
 
@@ -990,10 +1008,11 @@ async function morningBrief(){          /* once per page load: the bridge says w
     if(speakOn)await speak(j.text)}catch(e){}
 }
 function panelsChanged(){
-  if(panelOn('reminders'))loadReminders();if(panelOn('calendar'))loadCalendar();if(panelOn('brief'))renderBrief();if(panelOn('sports'))loadScores();
+  if(panelOn('reminders'))loadReminders();if(panelOn('calendar'))loadCalendar();if(panelOn('brief'))renderBrief();
+  if(panelOn('sports'))loadScores();else if(scoreTimer){clearTimeout(scoreTimer);scoreTimer=null}
 }
 setInterval(()=>{if(panelOn('calendar')&&!document.hidden)loadCalendar()},5*60*1000);
-setInterval(()=>{if(panelOn('sports')&&!document.hidden)loadScores()},60*1000);
+document.addEventListener('visibilitychange',function(){if(!document.hidden&&panelOn('sports'))loadScores()});
 setInterval(()=>{if(!MB.done&&BR.online&&!document.hidden)morningBrief()},20*1000);
 setTimeout(()=>{if(BR.online)morningBrief()},3000);
 
