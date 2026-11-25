@@ -1,3 +1,11 @@
+## ATLAS 1.4.6
+
+**More than one Google account on the calendar.**
+
+- **Connect another Google account.** Say it, or press the button in Settings -> General -> Calendars. Each account is saved only on this computer, in its own file. The Google sign-in Hermes already uses, and a Connect Google token you already have, stay the first account — you do not sign in again for that one.
+- **List and remove.** Say "what Google accounts are connected", or "remove the work Google account". Removing the email sign-in stops the calendar read and leaves Hermes' email file where it is.
+- **One answer for every account.** Today, tomorrow and your next meeting include events from all of them. ATLAS names the account when you ask which one, or when more than one account is in the answer.
+
 ## ATLAS 1.4.5
 
 **The Sports panel shows each team's latest result and next game, not only the nearest match day.**

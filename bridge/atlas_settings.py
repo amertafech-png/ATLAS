@@ -108,7 +108,7 @@ def static_registry():
           examples=["turn off task animations", "turn on task animations"], desc="The center changes with what ATLAS is doing: thinking, searching, weather, music."),
         # ---- panels: calendar, live scores, daily brief
         S("calendar.sources", "Calendars", "Calendar and daily brief", "list", ["calendar sources", "calendar links", "my calendars", "calendars", "connected calendars"], ui="calendar",
-          examples=["what calendars do I have", "remove the work calendar"], desc="Calendar files or secret links (Google, Outlook) shown on the Calendar panel. Add links in Settings - they are too long to say."),
+          examples=["what calendars do I have", "remove the work calendar", "connect another Google account"], desc="Calendar files, secret links, or Google accounts shown on the Calendar panel. Say connect another Google account to add one. Links are too long to say."),
         S("sports.live", "Live scores", "Calendar and daily brief", "bool", ["live scores", "live sports scores", "score updates", "live sports", "sports scores online", "live game scores"],
           examples=["turn off live scores", "turn on live scores"], desc="Look up scores for the teams you follow on ESPN's public scoreboard. The Sports panel refreshes about every 15 seconds during a live game and about every 5 minutes otherwise (sends only the league and the dates in view; no account)."),
         S("reminders.chime", "Reminder chime", "Calendar and daily brief", "bool", ["reminder chime", "reminders chime", "timer chime", "alert chime", "reminder sound", "timer sound", "chime"],

@@ -148,30 +148,53 @@ class Info:
         except Exception:
             evs = []
         err = ""
+        asked_google = False
         g = self._google()
         if g is not None and g.connected():
+            asked_google = True
             try:
                 evs.extend(g.events(start, end, force=force))
             except atlas_google.GoogleError as e:
                 err = str(e)
             except Exception:
                 err = "I couldn't reach Google Calendar just now."
+        accounts = {str(e.get("account") or "") for e in evs if e.get("account")}
+        multi = len(accounts) > 1
         seen, out = set(), []
-        for e in sorted(evs, key=lambda e: (e["start"], e["title"])):
-            key = (e.get("title"), e["start"].isoformat() if hasattr(e["start"], "isoformat") else e["start"], bool(e.get("all_day")))
+        for e in sorted(evs, key=lambda e: (e["start"], e["title"], str(e.get("account") or ""))):
+            key = (e.get("title"), e["start"].isoformat() if hasattr(e["start"], "isoformat") else e["start"], bool(e.get("all_day")), e.get("account") if multi else "")
             if key in seen:
                 continue
             seen.add(key)
             out.append(e)
         self._google_err = err
-        return out, err
+        if asked_google and g is not None and not err:
+            extra = [p for p in (g.problems() if hasattr(g, "problems") else []) if p]
+            if extra:
+                self._google_err = extra[0]
+        return out, self._google_err
 
-    def calendar_lines(self, start, end, today):
+    def _account_suffix(self, e, evs, ask=False):
+        label = str(e.get("account") or "").strip()
+        if not label:
+            return ""
+        labels = {str(x.get("account") or "").strip() for x in evs if str(x.get("account") or "").strip()}
+        same = sum(1 for x in evs if x.get("title") == e.get("title") and x.get("account"))
+        many = len(labels) > 1 or same > 1
+        if not many and not ask:
+            g = self._google()
+            many = bool(g is not None and hasattr(g, "public_accounts") and len(g.public_accounts()) > 1)
+        if ask or many:
+            return " (" + label + ")"
+        return ""
+
+    def calendar_lines(self, start, end, today, ask=False):
         evs, _err = self.events_between(start, end)
         out = []
         for e in evs:
             when = "all day" if e["all_day"] else "at " + clock(e["start"])
-            out.append((e, e["title"] + (" " + when if not e["all_day"] else ", all day") + ((" in " + e["location"]) if e["location"] else "")))
+            text = e["title"] + self._account_suffix(e, evs, ask) + (" " + when if not e["all_day"] else ", all day") + ((" in " + e["location"]) if e["location"] else "")
+            out.append((e, text))
         return out
 
     def scores(self):
@@ -270,6 +293,16 @@ class Info:
             or re.fullmatch(r"(?:score|results?) (?:for|of) (?:the |my )?(.+)", t)
         if m and m.group(1).strip() not in NOT_TEAMS and not re.search(r"\b(?:day|week|night|morning|weekend|you|your)$", m.group(1).strip()):
             return {"op": "scores", "team": m.group(1).strip()}
+        # "connect another google account" adds a second sign-in. "connect google" is still the first one.
+        if re.search(r"\b(?:connect|add|link|sign in(?: to)?|log in(?: to)?)\b.{0,48}\banother\b.{0,48}\bgoogle\b|\banother google account\b|\bsecond google account\b", t):
+            return {"op": "google_connect", "another": True}
+        if re.search(r"\bgoogle accounts?\b", t) and re.search(r"\b(?:list|what|which|show|tell|read|who|how many)\b", t) and not is_calendar_topic(t):
+            return {"op": "google_accounts"}
+        if re.search(r"\b(?:remove|disconnect|unlink|forget|sign out of)\b", t) and "google" in t and "account" in t:
+            name = re.sub(r"^.*\b(?:remove|disconnect|unlink|forget|sign out of)\b\s+", "", t)
+            name = re.sub(r"\b(?:google|accounts?|calendars?|the|my|called|named|please)\b", " ", name)
+            name = re.sub(r"\s+", " ", name).strip(" .")
+            return {"op": "google_remove", "name": name}
         # "connect google": one-time browser sign-in that reuses Hermes' Google app. "reconnect my google calendar" stays on the broader rule below.
         if re.search(r"\bconnect google\b", t):
             return {"op": "google_connect"}
@@ -287,13 +320,20 @@ class Info:
         it = self.parse(text)
         if not it:
             return None
+        if it.get("op") in ("calendar", "next", "brief"):
+            raw = str(text or "").lower().replace("\u2019", "'")
+            it["ask_account"] = bool(re.search(r"\b(?:which|what|whose)\b.+\baccounts?\b|\bwhose calendar\b", raw))
         loop = asyncio.get_running_loop()
         op = it["op"]
         if op == "brief":
             b = await loop.run_in_executor(None, self.brief)
             return {"reply": b["text"], "changed": [], "ui": None, "pending": False, "brief": b}
         if op == "google_connect":
-            return await self._connect_google()
+            return await self._connect_google(another=bool(it.get("another")))
+        if op == "google_accounts":
+            return self._google_accounts_reply()
+        if op == "google_remove":
+            return self._google_remove_reply(it.get("name") or "")
         if op == "calendar_connect":
             if self.calendar_ready():
                 return self._already_connected()
@@ -306,13 +346,20 @@ class Info:
             return await loop.run_in_executor(None, self._calendar_reply, it)
         if op == "calendars":
             names = [p["name"] for p in self.env.calendar.public_sources()]
-            g = self._google()
-            if g is not None and g.connected():
-                names.append("Google")
+            names.extend(self._google_labels())
             return self._r("You have %d calendar%s: %s." % (len(names), "" if len(names) == 1 else "s", ", ".join(names)) if names else "No calendar is connected yet. Open Settings and add an .ics file or a calendar link.")
         if op == "calendar_remove":
             ok = self.env.calendar.remove(it["name"])
-            return {"reply": ("Okay, I disconnected the %s calendar." % it["name"]) if ok else "I don't have a calendar called %s." % it["name"], "changed": ["calendar.sources"] if ok else [], "ui": None, "pending": False}
+            if ok:
+                return {"reply": "Okay, I disconnected the %s calendar." % it["name"], "changed": ["calendar.sources"], "ui": None, "pending": False}
+            g = self._google()
+            if g is not None and g.connected() and hasattr(g, "remove"):
+                got = g.remove(it["name"])
+                if got:
+                    if got.get("kind") == "hermes":
+                        return self._r("Okay, I stopped reading the calendar on %s. I left the email sign-in on this computer alone." % got.get("label"))
+                    return self._r("Okay, I disconnected the Google account %s." % got.get("label"))
+            return {"reply": "I don't have a calendar called %s." % it["name"], "changed": [], "ui": None, "pending": False}
         if op == "scores":
             return await loop.run_in_executor(None, self._scores_reply, it)
         return None
@@ -330,22 +377,64 @@ class Info:
             return self._r("You haven't connected a calendar yet. Say connect Google and I'll open a one-time page in your browser. Or open Settings, then Calendar, and add an .ics file or a secret link.")
         return self._r("You haven't connected a calendar yet. Open Settings, then Calendar, and add an .ics file or your calendar's secret link - no sign-in needed.")
 
+    def _google_labels(self):
+        g = self._google()
+        if g is None or not g.connected():
+            return []
+        if hasattr(g, "public_accounts"):
+            labels = [a.get("label") or "Google" for a in g.public_accounts()]
+            if labels:
+                return labels
+        return ["Google"]
+
     def _already_connected(self):
         names = [p["name"] for p in self.env.calendar.public_sources()]
         g = self._google()
         google_on = g is not None and g.connected()
+        labels = self._google_labels()
         if google_on:
-            names.append("Google")
+            names.extend(labels)
         if google_on and not self.env.calendar.sources():
-            return self._r("Your calendar is already connected to me: Google. I read it with the same Google sign-in as your email, saved only on this computer. "
-                           "Ask me what's on today, tomorrow or next. To add another calendar, open Settings, then Calendar.")
+            who = ", ".join(labels or ["Google"])
+            return self._r("Your calendar is already connected to me: %s. I read it with the Google sign-in saved only on this computer. "
+                           "Ask me what's on today, tomorrow or next. To add one, say connect another Google account." % who)
         return self._r("Your calendar is already connected to me: %s. I read it straight from the calendar link in Settings, so there's nothing to reconnect and no Google sign-in is needed. "
                        "Ask me what's on today, tomorrow or last week. To change the link, open Settings, then Calendar." % ", ".join(names))
 
-    async def _connect_google(self):
+    def _google_accounts_reply(self):
+        labels = self._google_labels()
+        if not labels:
+            return self._r("No Google account is connected yet. Say connect Google, and I'll open a one-time page in your browser. After that, say connect another Google account for a second one.")
+        if len(labels) == 1:
+            return self._r("One Google account is connected: %s. Say connect another Google account to add one." % labels[0])
+        return self._r("%d Google accounts are connected: %s. Say remove the work Google account, using the name you see, to drop one." % (len(labels), ", ".join(labels)))
+
+    def _google_remove_reply(self, name):
         g = self._google()
+        if g is None or not hasattr(g, "remove"):
+            return self._r("No Google account is connected.")
+        labels = self._google_labels()
+        got = g.remove(name)
+        if not got:
+            if not labels:
+                return self._r("No Google account is connected.")
+            if not (name or "").strip() or (name or "").strip().lower() in ("other", "second", "extra"):
+                return self._r("Which Google account? I have %s." % ", ".join(labels))
+            return self._r("I don't have a Google account called %s. I have %s." % (name, ", ".join(labels)))
+        if got.get("kind") == "hermes":
+            return self._r("Okay, I stopped reading the calendar on %s. I left the email sign-in on this computer alone." % got.get("label"))
+        return self._r("Okay, I disconnected the Google account %s." % got.get("label"))
+
+    async def _connect_google(self, another=False):
+        g = self._google()
+        if another:
+            if g is None or not ((g.status() or {}).get("client") or g.connected() or g.needs_connect()):
+                return self._r("I can't open another Google sign-in yet because the Google app file Hermes uses isn't on this computer. Open Settings, then Calendar, and add an .ics file or a secret calendar link.")
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, lambda: g.connect(another=True))
+            return self._r((result or {}).get("message") or "I couldn't finish connecting that Google account.")
         if g is not None and g.connected():
-            return self._r("Google Calendar is already connected. I read it with the same Google sign-in as your email, saved only on this computer. Ask what's on today or tomorrow.")
+            return self._r("Google Calendar is already connected. I read it with the same Google sign-in as your email, saved only on this computer. Ask what's on today or tomorrow. To add one, say connect another Google account.")
         if g is None or not g.needs_connect():
             return self._r("I read your calendar from its secret calendar link, no sign-in needed. Open Settings, then Calendar, and paste the link from Google Calendar "
                            "(Settings and sharing, Secret address in iCal format) or an .ics file.")
@@ -365,7 +454,8 @@ class Info:
             if not evs:
                 return self._r(err or "Nothing coming up in the next 30 days.")
             e = evs[0]
-            return self._r("Your next event is %s %s at %s%s." % (e["title"], day_label(e["start"].date(), today), clock(e["start"]), (" in " + e["location"]) if e["location"] else ""))
+            ask = bool(it.get("ask_account"))
+            return self._r("Your next event is %s%s %s at %s%s." % (e["title"], self._account_suffix(e, evs, ask), day_label(e["start"].date(), today), clock(e["start"]), (" in " + e["location"]) if e["location"] else ""))
         if it.get("range"):
             first, last, label, past = it["range"]
             days = [first + timedelta(days=i) for i in range((last - first).days + 1)]
@@ -375,7 +465,8 @@ class Info:
             if not evs:
                 return self._r(err or (("There was nothing on your calendar %s." if past else "Nothing %s on your calendar.") % label))
             multi = len(days) > 1
-            lines = ["%s%s%s" % ((e["start"].strftime("%A %b ") + str(e["start"].day) + ": ") if multi else "", e["title"], (", all day" if e["all_day"] else " at " + clock(e["start"]))) for e in evs[:10]]
+            ask = bool(it.get("ask_account"))
+            lines = ["%s%s%s%s" % ((e["start"].strftime("%A %b ") + str(e["start"].day) + ": ") if multi else "", e["title"], self._account_suffix(e, evs, ask), (", all day" if e["all_day"] else " at " + clock(e["start"]))) for e in evs[:10]]
             return self._r("%s you %s %d event%s. %s%s." % (label[0].upper() + label[1:] + ",", "had" if past else "have", len(evs), "" if len(evs) == 1 else "s", "; ".join(lines),
                                                            ("; and %d more" % (len(evs) - 10)) if len(evs) > 10 else ""))
         when = it["when"]
@@ -406,9 +497,10 @@ class Info:
         if not evs:
             return self._r(err or ("Nothing %s on your calendar." % label))
         multi = len(days) > 1
+        ask = bool(it.get("ask_account"))
         lines = []
         for e in evs[:8]:
-            lines.append("%s%s%s" % ((day_label(e["start"].date(), today) + ": ") if multi else "", e["title"], (", all day" if e["all_day"] else " at " + clock(e["start"]))))
+            lines.append("%s%s%s%s" % ((day_label(e["start"].date(), today) + ": ") if multi else "", e["title"], self._account_suffix(e, evs, ask), (", all day" if e["all_day"] else " at " + clock(e["start"]))))
         return self._r("%s: %d event%s. %s%s." % (label.capitalize(), len(evs), "" if len(evs) == 1 else "s", "; ".join(lines), ("; and %d more" % (len(evs) - 8)) if len(evs) > 8 else ""))
 
     def calendar_context(self, text):
@@ -430,8 +522,10 @@ class Info:
         first, last = min(first, today - timedelta(days=1)), max(last, today + timedelta(days=1))
         mid = lambda d: datetime.combine(d, datetime.min.time()).replace(tzinfo=now.tzinfo)   # noqa: E731
         evs, gerr = self.events_between(mid(first), mid(last) + timedelta(days=1))
-        lines = ["- %s %s: %s%s" % (e["start"].strftime("%a %Y-%m-%d"), "all day" if e["all_day"] else clock(e["start"]) + "-" + clock(e["end"]), e["title"],
-                                   (" (" + e["location"] + ")") if e["location"] else "") for e in evs[:60]]
+        labels = {str(e.get("account") or "") for e in evs if e.get("account")}
+        lines = ["- %s %s: %s%s%s" % (e["start"].strftime("%a %Y-%m-%d"), "all day" if e["all_day"] else clock(e["start"]) + "-" + clock(e["end"]), e["title"],
+                                      (" [" + e["account"] + "]") if e.get("account") and len(labels) > 1 else "",
+                                      (" (" + e["location"] + ")") if e["location"] else "") for e in evs[:60]]
         errs = [p["name"] + ": " + p["error"] for p in self.env.calendar.public_sources() if p.get("error")]
         if gerr:
             errs.append(gerr)

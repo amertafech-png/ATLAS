@@ -995,15 +995,21 @@ function renderCalendar(){
     if(k===today)todayN++;if(n>=10)return;n++;
     if(k!==last){last=k;html+='<div class="dayh">'+(k===today?'Today':k===tom?'Tomorrow':st.toLocaleDateString([],{weekday:'long',month:'short',day:'numeric',timeZone:TZ}))+'</div>'}
     const cur=!ev.all_day&&st<=now&&now<en;
-    html+='<div class="ev'+(cur?' cur':'')+(!ev.all_day&&en<=now?' past':'')+'"><span class="tm">'+(ev.all_day?'All day':st.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',timeZone:TZ}))+'</span><span class="ti">'+esc(ev.title)+(ev.location?' <small>· '+esc(ev.location)+'</small>':'')+'</span></div>'});
+    const who=(CALS.google&&(CALS.google.accounts||[]).length>1&&ev.account)?' <small>· '+esc(ev.account)+'</small>':'';
+    html+='<div class="ev'+(cur?' cur':'')+(!ev.all_day&&en<=now?' past':'')+'"><span class="tm">'+(ev.all_day?'All day':st.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',timeZone:TZ}))+'</span><span class="ti">'+esc(ev.title)+(ev.location?' <small>· '+esc(ev.location)+'</small>':'')+who+'</span></div>'});
   if(!html)html='<div class="ph" style="padding:1vh 0"><div>Nothing coming up</div><div class="tag">Next 7 days are clear</div></div>';
   if(bad.length)html+='<div class="lab meta" style="padding-top:.8vh;color:var(--warn)">'+esc(bad[0].name)+': '+esc(bad[0].error)+'</div>';
   el.innerHTML=html;tg.textContent=bad.length?'Check link':todayN?todayN+' today':'Clear';tg.className='tag'+(bad.length?' off':todayN?' live':'');
 }
-async function connectGoogle(btn){
+async function connectGoogle(btn, another){
+  const label=another?'Connect another Google account':'Connect Google';
   if(btn){btn.disabled=true;btn.textContent='Opening your browser…'}
-  try{const j=await post('/api/calendar/google/connect',{});loadCalendar(true);if(document.getElementById('calblk'))drawCalBlock(j.message||'Google Calendar is connected.');return j}
-  catch(e){if(btn){btn.disabled=false;btn.textContent='Connect Google'}const m=document.getElementById('cal-msg');if(m){m.textContent=e.message;m.style.color='var(--warn)'}throw e}
+  try{const j=await post('/api/calendar/google/connect',another?{another:true}:{});loadCalendar(true);if(document.getElementById('calblk'))drawCalBlock(j.message||'Google Calendar is connected.');return j}
+  catch(e){if(btn){btn.disabled=false;btn.textContent=label}const m=document.getElementById('cal-msg');if(m){m.textContent=e.message;m.style.color='var(--warn)'}throw e}
+}
+async function removeGoogle(id){
+  try{await post('/api/calendar/google/remove',{id:id});loadCalendar(true);drawCalBlock('Removed that Google account.')}
+  catch(e){const m=document.getElementById('cal-msg');if(m){m.textContent=e.message;m.style.color='var(--warn)'}else drawCalBlock(e.message)}
 }
 async function loadCalendar(force){
   if(!BR.online)return;
@@ -1967,15 +1973,18 @@ function genRow(s){
 async function drawCalBlock(note){
   const el=document.getElementById('calblk');if(!el)return;
   let srcs=[],g={};try{const j=await api('/api/calendar/sources');srcs=j.sources||[];g=j.google||{}}catch(e){}
-  const grow=g.connected?'<div class="calsrc" data-src="google"><span class="n"><b>Google</b><small>'+esc(g.hint||'Google Calendar')+'</small></span></div>':'';
-  const gbtn=(!g.connected&&g.needs_connect)?'<div class="prow"><button class="btn sel" id="cal-go">Connect Google</button><span class="msg">One time, in your browser. Same Google app as your email.</span></div>':'';
+  const acc=g.accounts||[];
+  const grow=acc.length?acc.map(a=>'<div class="calsrc" data-src="'+esc(a.id)+'"><span class="n"><b>'+esc(a.label||'Google')+'</b><small>'+(a.kind==='hermes'?'Google account · same sign-in as your email':'Google account')+'</small></span><button class="btn" data-gacc="'+esc(a.id)+'" aria-label="Remove Google account '+esc(a.label||'Google')+'">Remove</button></div>').join(''):(g.connected?'<div class="calsrc" data-src="google"><span class="n"><b>Google</b><small>'+esc(g.hint||'Google Calendar')+'</small></span></div>':'');
+  const gbtn=(!g.connected&&g.needs_connect)?'<div class="prow"><button class="btn sel" id="cal-go">Connect Google</button><span class="msg">One time, in your browser. Same Google app as your email.</span></div>':(g.connected&&g.can_add!==false?'<div class="prow"><button class="btn sel" id="cal-go-another">Connect another Google account</button><span class="msg">Opens your browser so you can pick a different Google account. Saved only on this computer.</span></div>':'');
   el.innerHTML=grow+(srcs.length?srcs.map(x=>'<div class="calsrc" data-src="'+esc(x.id)+'"><span class="n"><b>'+esc(x.name)+'</b><small>'+esc(x.hint)+(x.error?' · <span style="color:var(--warn)">'+esc(x.error)+'</span>':x.ok?' · '+x.count+' events':'')+'</small></span><button class="btn" data-calrm="'+esc(x.id)+'" aria-label="Remove calendar '+esc(x.name)+'">Remove</button></div>').join(''):(g.connected?'':'<div class="lab" style="padding:.6vh 0">No calendar connected yet.</div>'))+
     gbtn+
     '<div class="calform"><input id="cal-name" maxlength="40" placeholder="Name (e.g. Work)" aria-label="Calendar name"><input id="cal-val" placeholder="Secret link (https://…) or path to an .ics file" aria-label="Calendar link or .ics file path" autocomplete="off"><button class="btn sel" id="cal-do">Add</button></div>'+
     '<div class="lab" id="cal-msg" style="text-transform:none;letter-spacing:.04em">'+esc(note||'')+'</div>'+
-    '<details class="sayhelp"><summary>Where do I find the link?</summary><p><b>Google:</b> if ATLAS can already read your email, press <b>Connect Google</b> once. It opens in your usual browser and uses the same Google app Hermes saved. Nothing new to download, and the permission stays on this computer. <b>Or a link:</b> Google Calendar → Settings → your calendar → “Integrate calendar” → “Secret address in iCal format”. <b>Outlook.com:</b> Settings, Calendar, Shared calendars, Publish a calendar, copy the ICS link. <b>A file:</b> type the full path of an .ics file on this computer. Treat a secret link like a password. ATLAS stores it only on this computer and never shows it again after you add it.</p></details>';
+    '<details class="sayhelp"><summary>Where do I find the link?</summary><p><b>Google:</b> if ATLAS can already read your email, press <b>Connect Google</b> once. It opens in your usual browser and uses the same Google app Hermes saved. To add a second Google account, press <b>Connect another Google account</b> or say “connect another Google account”. Each sign-in stays on this computer. Say “what Google accounts are connected” or “remove the work Google account” to list or drop one. <b>Or a link:</b> Google Calendar → Settings → your calendar → “Integrate calendar” → “Secret address in iCal format”. <b>Outlook.com:</b> Settings, Calendar, Shared calendars, Publish a calendar, copy the ICS link. <b>A file:</b> type the full path of an .ics file on this computer. Treat a secret link like a password. ATLAS stores it only on this computer and never shows it again after you add it.</p></details>';
   el.querySelectorAll('[data-calrm]').forEach(b=>b.onclick=async()=>{try{await post('/api/calendar/sources/remove',{id:b.dataset.calrm});loadCalendar(true);drawCalBlock('Removed.')}catch(e){drawCalBlock(e.message)}});
-  const go=document.getElementById('cal-go');if(go)go.onclick=()=>{connectGoogle(go).catch(function(){})};
+  el.querySelectorAll('[data-gacc]').forEach(b=>b.onclick=()=>removeGoogle(b.dataset.gacc));
+  const go=document.getElementById('cal-go');if(go)go.onclick=()=>{connectGoogle(go,false).catch(function(){})};
+  const more=document.getElementById('cal-go-another');if(more)more.onclick=()=>{connectGoogle(more,true).catch(function(){})};
   document.getElementById('cal-do').onclick=async()=>{const m=document.getElementById('cal-msg');m.textContent='Adding…';
     try{const j=await post('/api/calendar/sources',{name:document.getElementById('cal-name').value,value:document.getElementById('cal-val').value});loadCalendar(true);drawCalBlock(j.message||'Added.')}catch(e){m.textContent=e.message;m.style.color='var(--warn)'}};
 }
