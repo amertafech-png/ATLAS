@@ -226,7 +226,7 @@ class Info:
             if sc["error"]:
                 sec["sports"] = sc["error"]
             elif not sc["games"]:
-                sec["sports"] = "No recent or upcoming games for the teams you follow."
+                sec["sports"] = "No games in the last 7 days or the next 2 weeks for the teams you follow."
             else:
                 lines = [SC.speak_game(g) for g in sc["games"][:5]]
                 sec["sports"] = "Sports: " + " ".join(lines) + (" (may be out of date)" if sc.get("stale") else "")
@@ -454,8 +454,8 @@ class Info:
             mine = [g for g in games if tf and (tf in SC.fold(g["mine"]) or SC.fold(g["mine"]) in tf or SC.matches(team, {"displayName": g["home"]["name"]}) or SC.matches(team, {"displayName": g["away"]["name"]}))]
             if not mine:
                 followed = any(tf in SC.fold(t) or SC.fold(t) in tf for e in sports for t in (e.get("teams") or []) if t)
-                return self._r(("I don't see a recent or upcoming game for %s." % team) if followed else "You don't follow %s yet. Say follow %s in soccer (or the right sport) and I'll watch for them." % (team, team))
+                return self._r(("No games for %s in the last 7 days or the next 2 weeks." % team) if followed else "You don't follow %s yet. Say follow %s in soccer (or the right sport) and I'll watch for them." % (team, team))
             return self._r(" ".join(SC.speak_game(g, g["mine"]) for g in mine[:3]) + (" These scores may be out of date." if sc.get("stale") else ""))
         if not games:
-            return self._r("No recent or upcoming games for the teams you follow." + ((" There's no live feed for %s." % ", ".join(sc["unsupported"])) if sc["unsupported"] else ""))
+            return self._r("No games in the last 7 days or the next 2 weeks for the teams you follow." + ((" There's no live feed for %s." % ", ".join(sc["unsupported"])) if sc["unsupported"] else ""))
         return self._r(" ".join(SC.speak_game(g) for g in games[:5]) + (" These scores may be out of date." if sc.get("stale") else ""))
