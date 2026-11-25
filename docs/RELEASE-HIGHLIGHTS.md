@@ -1,10 +1,11 @@
 ## ATLAS 1.4.5
 
-**ATLAS opens full screen, like a kiosk, and you can leave it whenever you want.**
+**The Sports panel shows each team's latest result and next game, not only the nearest match day.**
 
-- **Full screen by default.** The window covers the whole monitor: no title bar, and on Windows the taskbar is hidden. It still uses ATLAS's own private browser profile and prefers Chrome (then Edge, then Brave).
-- **Easy to leave, and it remembers.** Press **F11** or **Esc** (on a Mac, **Ctrl+Cmd+F** or **Esc**), say **full screen** or **exit full screen**, or use the **Full screen** switch in **Settings**. **Settings** (Ctrl+,) and **Reset** stay on the screen.
-- **Links still open in your usual browser.** Sign-in pages and other links are handed to the browser you chose as the default. They do not open inside the full-screen window.
+- **A wider schedule.** For every team you follow, ATLAS reads that league's games from 7 days ago through the next 2 weeks. A team that did not play on the previous match day, or does not play on the next one, still shows up.
+- **Last result and next game.** If your team is playing now, you see that live score. Otherwise you see the most recent final and the next game, with the date and time in your local time.
+- **A plain empty line.** If a team has no game in that window, the panel says so. The "Ask Hermes" button is gone.
+- **Same refresh as before.** About every 15 seconds while a game is live, about every 5 minutes otherwise. If ESPN doesn't answer, the last scores stay on screen marked stale.
 
 ## ATLAS 1.4.4
 

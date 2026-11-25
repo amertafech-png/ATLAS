@@ -805,37 +805,60 @@ function applyProfile(p){
 }
 const SC={games:[],live:true,error:'',followed:false,loaded:false,stale:false};
 let scoreTimer=null,scoresBusy=false;
+function localWhen(iso){
+  try{const d=new Date(iso);if(!iso||isNaN(+d))return {when:'',time:''};
+    const zone={timeZone:TZ};
+    return {when:d.toLocaleString([],Object.assign({weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'},zone)),
+      time:d.toLocaleTimeString([],Object.assign({hour:'numeric',minute:'2-digit'},zone))}}catch(e){return {when:'',time:''}}
+}
 function gameBits(g){
   const h=g.home,a=g.away,mineHome=g.mine&&(h.name.toLowerCase().indexOf(g.mine.toLowerCase())>=0||g.mine.toLowerCase().indexOf(h.name.toLowerCase())>=0);
   const me=mineHome||!g.mine?h:a,op=me===h?a:h;
-  let score='',meta='';
-  if(g.state==='pre'){let t='';try{t=new Date(g.start).toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit',timeZone:TZ})}catch(e){}score=t;meta=g.league}
-  else{score=me.score+'–'+op.score;meta=(g.state==='in'?'<span class="live">LIVE</span> · '+esc(g.detail||''):esc(g.detail||'Final'))+' · '+esc(g.league)}
+  const when=localWhen(g.start);let score='',meta='';
+  if(g.state==='pre'){score=when.time||when.when||g.detail||'Upcoming';meta=(when.when?esc(when.when)+' · ':'')+esc(g.league||'')}
+  else if(g.state==='in'){score=(me.score||'0')+'–'+(op.score||'0');meta='<span class="live">LIVE</span> · '+esc(g.detail||'In progress')+(when.when?' · '+esc(when.when):'')+' · '+esc(g.league||'')}
+  else{score=(me.score||'0')+'–'+(op.score||'0');meta=(when.when?esc(when.when)+' · ':'')+esc(g.detail||'Final')+' · '+esc(g.league||'')}
   return {name:me.name,vs:op.name,score,meta,live:g.state==='in'};
+}
+/* Live game if there is one; otherwise the latest final and the next game. Later fixtures in the window stay off the row. */
+function gamesForTeam(gs){
+  const live=gs.filter(g=>g.state==='in');if(live.length)return live;
+  const post=gs.filter(g=>g.state==='post').sort((a,b)=>String(b.start).localeCompare(String(a.start)));
+  const pre=gs.filter(g=>g.state==='pre').sort((a,b)=>String(a.start).localeCompare(String(b.start)));
+  const out=[];if(post[0])out.push(post[0]);if(pre[0])out.push(pre[0]);return out;
+}
+function scoreEmpty(){
+  if(!SC.live)return 'Live scores are off';
+  if(SC.error)return 'Scores unavailable right now';
+  if(!SC.loaded)return 'Checking scores…';
+  return 'No games in the last 7 days or the next 2 weeks.';
+}
+function gameLine(g){
+  const b=gameBits(g);
+  return '<div class="gm"><div class="row"><span class="teams"><span class="lab">vs</span> '+esc(b.vs)+'</span><span class="score">'+esc(b.score)+'</span></div><div class="lab meta">'+b.meta+'</div></div>';
 }
 function renderTeams(){
   const el=document.getElementById('teamsbody');if(!el)return;const sp=(PROF.sports||[]);
   const tg=document.getElementById('sptag');
   if(!sp.length){el.innerHTML='<div class="ph" style="padding:2vh 0"><div>No sports yet</div><div class="tag">Pick your sports and teams in Settings</div></div>';if(tg){tg.textContent='Scores';tg.className='tag'}return}
-  let html='',n=0;const asks=[];
+  let html='';
   sp.forEach(e=>{
     html+='<div><div class="sub"><i></i>'+esc(e.sport)+(e.leagues.length?' · '+esc(e.leagues.join(', ')):'')+'</div>';
     const gm=(SC.games||[]).filter(g=>g.sport===e.sport);
-    const rows=e.teams.length?e.teams.map(t=>[t,'What was the most recent result for '+t+' ('+e.sport+') and when do they play next? Answer in one or two sentences, and say so if you are not sure.',gm.filter(g=>g.mine===t)])
-      :e.leagues.map(l=>[l,'Give me the latest '+l+' ('+e.sport+') results and what is coming up. Keep it to two or three sentences, and say so if you are not sure.',[]]);
-    if(!rows.length)html+='<div class="lab meta" style="padding:.4vh 0">No teams added</div>';
-    const used={};gm.forEach(g=>{if(g.mine)used[g.id]=1});
-    rows.forEach(r=>{asks.push(r[1]);
-      const gs=r[2];
-      html+='<div class="match"><div class="row"><span class="teams">'+esc(r[0])+'</span><button class="btn" data-ask="'+(asks.length-1)+'" style="padding:.2vh .6vw">Ask Hermes</button></div>';
-      if(gs.length)gs.slice(0,2).forEach(g=>{const b=gameBits(g);html+='<div class="gm"><div class="row"><span class="teams"><span class="lab">vs</span> '+esc(b.vs)+'</span><span class="score">'+esc(b.score)+'</span></div><div class="lab meta">'+b.meta+'</div></div>'});
-      else html+='<div class="lab meta">'+(!SC.live?'Live scores are off':SC.error?'Scores unavailable right now':SC.loaded?'No recent or upcoming game':'Checking scores…')+'</div>';
+    if(e.teams.length)e.teams.forEach(t=>{
+      const gs=gamesForTeam(gm.filter(g=>g.mine===t));
+      html+='<div class="match"><div class="row"><span class="teams">'+esc(t)+'</span></div>';
+      if(gs.length)gs.forEach(g=>{html+=gameLine(g)});
+      else html+='<div class="lab meta">'+scoreEmpty()+'</div>';
       html+='</div>'});
-    if(!e.teams.length)gm.filter(g=>!g.mine).slice(0,6).forEach(g=>{const b=gameBits(g);html+='<div class="match gm"><div class="row"><span class="teams">'+esc(g.home.name)+' <span class="lab">vs '+esc(g.away.name)+'</span></span><span class="score">'+esc(b.score)+'</span></div><div class="lab meta">'+b.meta+'</div></div>'});
+    else if((e.leagues||[]).length){
+      const gs=gm.filter(g=>!g.mine).slice(0,6);
+      if(!gs.length)html+='<div class="lab meta">'+scoreEmpty()+'</div>';
+      else gs.forEach(g=>{const b=gameBits(g);html+='<div class="match gm"><div class="row"><span class="teams">'+esc(g.home.name)+' <span class="lab">vs '+esc(g.away.name)+'</span></span><span class="score">'+esc(b.score)+'</span></div><div class="lab meta">'+b.meta+'</div></div>'});
+    }else html+='<div class="lab meta" style="padding:.4vh 0">No teams added</div>';
     html+='</div>'});
   if(SC.stale)html='<div class="lab meta" id="scorestale">stale</div>'+html;
   el.innerHTML=html;
-  el.querySelectorAll('[data-ask]').forEach(b=>b.onclick=()=>{if(!BR.online){log('Bridge offline');return}askHermes(asks[+b.dataset.ask],{speak:true})});
   if(tg){const any=(SC.games||[]).some(g=>g.state==='in');
     tg.textContent=!SC.live?'Scores off':SC.stale?(any?'Live · stale':'Scores · stale'):SC.error?'Offline':any?'Live':SC.loaded?((SC.games||[]).length?'Scores':'No games'):'Scores';
     tg.className='tag'+(!SC.live?'':SC.stale&&!any?' warn':any?' live':SC.error?' off':'')}
